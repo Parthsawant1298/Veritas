@@ -40,13 +40,13 @@ export default function Contact() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-stretch">
           
           {/* Left: Contact Info */}
-          <div className="lg:col-span-2 flex flex-col gap-6">
+          <div className="lg:col-span-2 flex flex-col gap-6 mx-auto max-w-md lg:max-w-none">
             <div className="p-6 rounded-3xl bg-[#0A0A0A] border border-white/10 relative overflow-hidden group hover:border-[#7C3AED]/30 transition-colors duration-300">
                <div className="absolute inset-0 bg-dot-pattern opacity-[0.03]" />
-               <h3 className="text-xl font-bold mb-5 relative z-10">Contact Information</h3>
+               <h3 className="text-xl font-bold mb-5 relative z-10 text-center lg:text-left">Contact Information</h3>
                
                <div className="space-y-5 relative z-10">
-                 <div className="flex items-start gap-3">
+                 <div className="flex flex-col items-center gap-3 text-center lg:flex-row lg:items-start lg:text-left lg:gap-3">
                     <div className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-white/5 flex items-center justify-center text-[#7C3AED] shrink-0">
                         <Mail size={16} />
                     </div>
@@ -56,7 +56,7 @@ export default function Contact() {
                     </div>
                  </div>
 
-                 <div className="flex items-start gap-3">
+                 <div className="flex flex-col items-center gap-3 text-center lg:flex-row lg:items-start lg:text-left lg:gap-3">
                     <div className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-white/5 flex items-center justify-center text-[#7C3AED] shrink-0">
                         <Phone size={16} />
                     </div>
@@ -66,7 +66,7 @@ export default function Contact() {
                     </div>
                  </div>
 
-                 <div className="flex items-start gap-3">
+                 <div className="flex flex-col items-center gap-3 text-center lg:flex-row lg:items-start lg:text-left lg:gap-3">
                     <div className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-white/5 flex items-center justify-center text-[#7C3AED] shrink-0">
                         <MapPin size={16} />
                     </div>
@@ -92,7 +92,7 @@ export default function Contact() {
           </div>
 
           {/* Right: Form */}
-          <div className="lg:col-span-3 flex">
+          <div className="lg:col-span-3 flex mx-auto max-w-md lg:max-w-none">
              <form className="p-6 md:p-8 rounded-3xl bg-[#0A0A0A] border border-white/10 relative overflow-hidden w-full flex flex-col">
                 <div className="absolute inset-0 bg-dot-pattern opacity-[0.03]" />
                 
@@ -127,7 +127,7 @@ export default function Contact() {
         </div>
 
         {/* --- MAP SECTION --- */}
-        <div className="mt-8">
+        <div className="mt-8 mx-auto max-w-md lg:max-w-none">
           <div className="w-full h-[400px] rounded-3xl overflow-hidden border border-white/10 bg-[#050505]">
             <iframe 
               src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.086728465932!2d-122.41941492346644!3d37.77492971796607!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8085809c6c8f4459%3A0xb10ed6d9b5050fa5!2sTwitter%20HQ!5e0!3m2!1sen!2sus!4v1732723200000!5m2!1sen!2sus"
