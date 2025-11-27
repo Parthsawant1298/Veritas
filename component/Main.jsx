@@ -1,7 +1,63 @@
 "use client";
 import React, { useRef, useEffect, useState } from 'react';
-import { Mic, Send, StopCircle, Activity, ShieldCheck, Bot, Terminal } from 'lucide-react';
+import { Mic, Send, StopCircle, Activity, ShieldCheck, Bot, Terminal, User, AlertTriangle, Loader2 } from 'lucide-react';
 import Navbar from '@/component/Navbar';
+
+// --- HELPER FUNCTIONS FOR AUDIO ---
+function floatTo16BitPCM(float32Array) {
+  const buffer = new ArrayBuffer(float32Array.length * 2);
+  const view = new DataView(buffer);
+  let offset = 0;
+  for (let i = 0; i < float32Array.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  // Custom manual base64 encoding to avoid call stack issues with large arrays
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Helper to convert Base64 PCM back to AudioBuffer for playback
+function base64ToAudioBuffer(base64, audioContext) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // PCM 16-bit is 2 bytes per sample
+  const frameCount = bytes.length / 2;
+  const audioBuffer = audioContext.createBuffer(1, frameCount, 24000); // 24kHz matches the server output
+  const channelData = audioBuffer.getChannelData(0);
+  const view = new DataView(bytes.buffer);
+
+  for (let i = 0; i < frameCount; i++) {
+    // Normalize 16-bit int to -1.0 to 1.0 float
+    channelData[i] = view.getInt16(i * 2, true) / 0x8000;
+  }
+  return audioBuffer;
+}
+
+// --- VOICE ACTIVITY DETECTION (VAD) ---
+function calculateRMS(audioData) {
+  let sum = 0;
+  for (let i = 0; i < audioData.length; i++) {
+    sum += audioData[i] * audioData[i];
+  }
+  return Math.sqrt(sum / audioData.length);
+}
+
+function isSpeechDetected(audioData, threshold = 0.01) {
+  const rms = calculateRMS(audioData);
+  return rms > threshold;
+}
 
 // --- 1. The UI Component (ChatInterface) ---
 const ChatInterface = ({ 
@@ -135,32 +191,75 @@ const ChatInterface = ({
                  </div>
                </div>
             )}
+            {msg.sender === 'system' && (
+               <div className="w-full flex justify-center my-4">
+                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg px-4 py-2">
+                   <p className="text-xs text-blue-400 font-medium">{msg.text}</p>
+                 </div>
+               </div>
+            )}
             {(msg.sender === 'user' || msg.sender === 'bot') && (
-              <div className={`max-w-[90%] sm:max-w-[75%] relative group ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                {msg.agentUsed && msg.sender === 'bot' && (
-                  <div className="flex items-center gap-2 mb-2 ml-1">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${msg.agentUsed === 'CHECKER' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' : msg.agentUsed === 'SWARM' ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' : 'bg-[#7C3AED]/10 border-[#7C3AED]/30 text-[#7C3AED]'}`}>
+              <div className={`flex items-end gap-3 max-w-[90%] sm:max-w-[80%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.sender === 'user' ? 'bg-[#7C3AED] border-[#7C3AED]' : 'bg-[#1A1A1A] border-white/10'}`}>
+                  {msg.sender === 'user' ? <User size={14} className="text-white" /> : <Bot size={14} className="text-[#7C3AED]" />}
+                </div>
+
+                <div className="flex flex-col gap-1 w-full">
+                  {/* Bot Metadata Headers */}
+                  {msg.sender === 'bot' && msg.agentUsed && (
+                    <div className="flex items-center gap-2 ml-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                        msg.agentUsed === 'CHECKER' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' :
+                        msg.agentUsed === 'SWARM' ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' :
+                        'bg-[#7C3AED]/10 border-[#7C3AED]/30 text-[#7C3AED]'
+                      }`}>
                         {msg.agentUsed}
                       </span>
+
                       {msg.metadata?.verdict && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${msg.metadata.verdict === 'REAL' ? 'bg-green-500/10 border-green-500/30 text-green-400' : msg.metadata.verdict === 'FAKE' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                          msg.metadata.verdict === 'REAL' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
+                          msg.metadata.verdict === 'FAKE' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
+                          'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                        }`}>
+                          {msg.metadata.verdict === 'FAKE' && <AlertTriangle size={8} />}
                           {msg.metadata.verdict}
                         </span>
                       )}
-                  </div>
-                )}
-                <div className={`p-3 sm:p-4 rounded-2xl text-sm sm:text-base leading-relaxed shadow-lg backdrop-blur-sm ${msg.sender === 'user' ? 'bg-[#7C3AED] text-white rounded-br-none' : 'bg-[#1A1A1A] border border-white/10 text-gray-200 rounded-bl-none'}`}>
-                  {msg.text}
-                  {msg.metadata?.sources && msg.metadata.sources.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-white/10">
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><ShieldCheck size={12} /> Verified Sources:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {msg.metadata.sources.map((src, i) => (
-                           <a key={i} href={src.uri} target="_blank" rel="noopener noreferrer" className="bg-black/40 px-2 py-1 rounded-md border border-white/5 text-[10px] text-blue-400 hover:text-blue-300 truncate max-w-[200px] underline">{src.title}</a>
-                        ))}
-                      </div>
                     </div>
                   )}
+
+                  {/* Message Bubble */}
+                  <div className={`p-4 rounded-2xl shadow-lg backdrop-blur-sm text-sm sm:text-base leading-relaxed whitespace-pre-wrap ${
+                    msg.sender === 'user'
+                      ? 'bg-[#7C3AED] text-white rounded-br-none'
+                      : 'bg-[#1A1A1A] border border-white/10 text-gray-200 rounded-bl-none'
+                  }`}>
+                    {msg.text}
+
+                    {/* Verification Sources */}
+                    {msg.sender !== 'user' && msg.metadata?.sources && msg.metadata.sources.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-white/10">
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <ShieldCheck size={12} /> Verified Sources:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.metadata.sources.map((src, i) => (
+                            <a
+                              key={i}
+                              href={src.uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-black/40 px-2 py-1.5 rounded-md border border-white/5 text-[10px] text-blue-400 hover:text-blue-300 hover:border-blue-500/30 transition-all truncate max-w-[200px] flex items-center gap-1"
+                            >
+                              <span className="truncate">{src.title || src.uri}</span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -169,7 +268,8 @@ const ChatInterface = ({
         {isTyping && (
            <div className="flex justify-start w-full animate-fade-in-up">
              <div className="bg-[#1A1A1A] border border-white/10 rounded-xl p-3 flex items-center gap-3 shadow-lg">
-               <span className={`text-xs font-mono font-medium animate-pulse text-[#7C3AED]`}>{agentStatus}</span>
+               <Loader2 size={16} className="text-[#7C3AED] animate-spin" />
+               <span className="text-xs font-mono font-medium text-[#7C3AED] animate-pulse">{agentStatus}</span>
              </div>
            </div>
         )}
@@ -192,7 +292,7 @@ const ChatInterface = ({
   );
 };
 
-// --- 2. The Main Page Logic (API INTEGRATION) ---
+// --- 2. The Main Page Logic (API INTEGRATION WITH VAD) ---
 export default function ChatPage() {
   const [messages, setMessages] = useState([
     {
@@ -208,20 +308,30 @@ export default function ChatPage() {
   const [isLiveSessionActive, setIsLiveSessionActive] = useState(false);
   const [agentStatus, setAgentStatus] = useState(null);
 
+  // Live Session Refs
+  const websocketRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const streamRef = useRef(null);
+  const processorRef = useRef(null);
+  const nextStartTimeRef = useRef(0);
+  
+  // VAD State
+  const vadBufferRef = useRef([]);
+  const isSpeakingRef = useRef(false);
+  const silenceCounterRef = useRef(0);
+
   useEffect(() => {
     setMessages(prev => prev.map(msg => msg.id === 1 && !msg.timestamp ? { ...msg, timestamp: new Date() } : msg));
   }, []);
 
-  // --- API CALLING LOGIC (CORRECTED FOR FASTAPI BACKEND) ---
+  // --- API CALLING LOGIC ---
   const handleSendMessage = async (text) => {
-    // 1. Optimistic Update
     const userMsg = { id: Date.now(), sender: 'user', text, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setIsTyping(true);
     setAgentStatus("Orchestrating Agents...");
 
     try {
-        // 2. Call Main Agent (Orchestrator)
         const mainRes = await fetch('http://localhost:8000/api/main-agent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -229,11 +339,9 @@ export default function ChatPage() {
         });
         const plan = await mainRes.json();
 
-        // 3. Handle Actions
         if (plan.action === "DELEGATE_TO_CHECKER") {
             setAgentStatus("Verifying with Google Search...");
             
-            // Visual for Agent handoff
             setMessages(prev => [...prev, {
                 id: Date.now(),
                 sender: 'agent-to-agent',
@@ -241,7 +349,6 @@ export default function ChatPage() {
                 timestamp: new Date()
             }]);
 
-            // Call Check Agent
             const checkRes = await fetch('http://localhost:8000/api/check-agent', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -249,7 +356,6 @@ export default function ChatPage() {
             });
             const checkResult = await checkRes.json();
 
-            // Synthesize final response
             const synthRes = await fetch('http://localhost:8000/api/synthesis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -283,7 +389,6 @@ export default function ChatPage() {
                 timestamp: new Date()
             }]);
 
-            // Call Crisis Scanner
             const scanRes = await fetch('http://localhost:8000/api/scan-crisis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -291,7 +396,6 @@ export default function ChatPage() {
             });
             const trends = await scanRes.json();
 
-            // Format trends result
             let summary = "Crisis Scan Complete. Found the following trends:\n\n";
             trends.forEach((t, idx) => {
                 summary += `${idx + 1}. [${t.verdict}] ${t.claim}\n   Severity: ${t.severity} | Volume: ${t.volume} mentions\n\n`;
@@ -307,7 +411,6 @@ export default function ChatPage() {
             }]);
 
         } else {
-            // DIRECT REPLY
             setMessages(prev => [...prev, {
                 id: Date.now(),
                 sender: 'bot',
@@ -347,7 +450,6 @@ export default function ChatPage() {
         const data = await res.json();
         
         if (data.text && data.text.trim()) {
-            // Feed transcription back into normal flow
             await handleSendMessage(data.text);
         } else {
             setIsTyping(false);
@@ -367,29 +469,178 @@ export default function ChatPage() {
     }
   };
 
-  const handleToggleLiveSession = () => {
-    if (!isLiveSessionActive) {
-      // Start live session
-      setIsLiveSessionActive(true);
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        sender: 'bot',
-        text: "Live voice session started. Speak now...",
-        timestamp: new Date(),
-        agentUsed: 'LIVE'
-      }]);
-      
-      // TODO: Connect to WebSocket at ws://localhost:8000/ws/live-session
-      // For now, just a placeholder
-    } else {
+  const handleToggleLiveSession = async () => {
+    if (isLiveSessionActive) {
       // Stop live session
+      if (websocketRef.current) {
+        websocketRef.current.close();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (processorRef.current) {
+        processorRef.current.disconnect();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      
+      // Reset VAD state
+      vadBufferRef.current = [];
+      isSpeakingRef.current = false;
+      silenceCounterRef.current = 0;
+      
       setIsLiveSessionActive(false);
       setMessages(prev => [...prev, {
         id: Date.now(),
-        sender: 'bot',
+        sender: 'system',
         text: "Live voice session ended.",
-        timestamp: new Date(),
-        agentUsed: 'LIVE'
+        timestamp: new Date()
+      }]);
+      return;
+    }
+
+    // Start live session
+    setIsLiveSessionActive(true);
+    
+    try {
+      // 1. Setup Audio Context
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      audioContextRef.current = ctx;
+      nextStartTimeRef.current = ctx.currentTime;
+
+      // 2. Setup WebSocket
+      const ws = new WebSocket('ws://localhost:8000/ws/live-session');
+      websocketRef.current = ws;
+
+      ws.onopen = async () => {
+        console.log("✅ WS Connected");
+        setMessages(prev => [...prev, { 
+          id: Date.now(), 
+          sender: 'system', 
+          text: '🎤 Voice Connection Established. Speak now!' 
+        }]);
+        
+        // 3. Setup Mic Stream
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            sampleRate: 16000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+        streamRef.current = stream;
+
+        const source = ctx.createMediaStreamSource(stream);
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+
+        // ✅ VAD-ENABLED AUDIO PROCESSING
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          
+          const inputData = e.inputBuffer.getChannelData(0);
+          
+          // Detect if speech is present
+          const hasSpeech = isSpeechDetected(inputData, 0.01);
+          
+          if (hasSpeech) {
+            // Speech detected - send audio
+            silenceCounterRef.current = 0;
+            
+            if (!isSpeakingRef.current) {
+              isSpeakingRef.current = true;
+              console.log("🗣️ Speech detected - streaming audio");
+            }
+            
+            // Send buffered audio if transitioning from silence
+            if (vadBufferRef.current.length > 0) {
+              vadBufferRef.current.forEach(buffered => {
+                const base64Audio = floatTo16BitPCM(buffered);
+                ws.send(JSON.stringify({ type: "audio", audio: base64Audio }));
+              });
+              vadBufferRef.current = [];
+            }
+            
+            // Send current audio
+            const base64Audio = floatTo16BitPCM(inputData);
+            ws.send(JSON.stringify({ type: "audio", audio: base64Audio }));
+          } 
+          else {
+            // No speech - count silence frames
+            silenceCounterRef.current++;
+            
+            // Buffer audio for 500ms (keep ~12 frames at 4096 buffer size)
+            if (vadBufferRef.current.length < 12) {
+              vadBufferRef.current.push(new Float32Array(inputData));
+            } else {
+              vadBufferRef.current.shift();
+              vadBufferRef.current.push(new Float32Array(inputData));
+            }
+            
+            // After 1 second of silence (24 frames), mark as not speaking
+            if (silenceCounterRef.current > 24 && isSpeakingRef.current) {
+              isSpeakingRef.current = false;
+              console.log("🤫 Silence detected - pausing stream");
+            }
+          }
+        };
+
+        source.connect(processor);
+        processor.connect(ctx.destination);
+      };
+
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'audio') {
+          const buffer = base64ToAudioBuffer(data.audio, ctx);
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(ctx.destination);
+          
+          const now = ctx.currentTime;
+          const startTime = Math.max(now, nextStartTimeRef.current);
+          source.start(startTime);
+          nextStartTimeRef.current = startTime + buffer.duration;
+        } 
+        else if (data.type === 'tool_executed') {
+          setMessages(prev => [...prev, { 
+              id: Date.now(), 
+              sender: 'agent-to-agent', 
+              text: `LIVE AGENT CHECK: "${data.query}" → ${data.result.verdict}` 
+          }]);
+        }
+        else if (data.type === 'status') {
+          console.log("📡 Status:", data.message);
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.error("❌ WS Error", e);
+        setIsLiveSessionActive(false);
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          sender: 'system',
+          text: '⚠️ Connection error. Please try again.'
+        }]);
+      };
+
+      ws.onclose = () => {
+        console.log("🔌 WS Closed");
+        setIsLiveSessionActive(false);
+      };
+
+    } catch (e) {
+      console.error("❌ Live Session Start Error", e);
+      setIsLiveSessionActive(false);
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        sender: 'system',
+        text: '❌ Failed to start live session. Check microphone permissions.'
       }]);
     }
   };

@@ -1,4 +1,5 @@
-# main.py
+# main.py - FIXED LIVE VOICE AGENT WEBSOCKET
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ import asyncio
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+import base64
 
 # Load environment variables from .env file
 load_dotenv()
@@ -85,7 +87,7 @@ class SynthesisRequest(BaseModel):
     userQuery: str
     checkResult: CheckAgentResponse
 
-# --- TOOLS DEFINITION (EXACT SAME AS TYPESCRIPT) ---
+# --- TOOLS DEFINITION ---
 LIVE_AGENT_TOOLS = [
     types.Tool(
         function_declarations=[
@@ -109,7 +111,7 @@ LIVE_AGENT_TOOLS = [
 
 CHECKER_TOOLS = [types.Tool(google_search=types.GoogleSearch())]
 
-# --- AGENT 0: TRANSCRIBER (LEGACY / TEXT MODE) ---
+# --- AGENT 0: TRANSCRIBER ---
 @app.post("/api/transcribe")
 async def transcribe_audio(request: TranscribeRequest):
     try:
@@ -140,7 +142,7 @@ async def transcribe_audio(request: TranscribeRequest):
         print(f"Transcription Error: {error}")
         return {"text": ""}
 
-# --- AGENT 0.5: TTS (LEGACY / TEXT MODE) ---
+# --- AGENT 0.5: TTS ---
 @app.post("/api/tts")
 async def generate_speech(request: TTSRequest):
     try:
@@ -173,7 +175,7 @@ async def generate_speech(request: TTSRequest):
         print(f"TTS Error: {error}")
         return {"audio": None}
 
-# --- AGENT 1: MAIN AGENT (REST) ---
+# --- AGENT 1: MAIN AGENT ---
 orchestrator_schema = types.Schema(
     type=types.Type.OBJECT,
     properties={
@@ -229,7 +231,7 @@ async def run_main_agent(request: MainAgentRequest):
             reply_text="System error."
         )
 
-# --- AGENT 2: CHECK AGENT (REST) ---
+# --- AGENT 2: CHECK AGENT ---
 @app.post("/api/check-agent", response_model=CheckAgentResponse)
 async def run_check_agent(request: CheckAgentRequest):
     try:
@@ -261,17 +263,14 @@ async def run_check_agent(request: CheckAgentRequest):
         verdict = 'UNCERTAIN'
         confidence = 0.5
 
-        # Parse verdict
         verdict_match = re.search(r'VERDICT:\s*(REAL|FAKE|UNCERTAIN)', text, re.IGNORECASE)
         if verdict_match:
             verdict = verdict_match.group(1).upper()
 
-        # Parse confidence
         confidence_match = re.search(r'CONFIDENCE:\s*([0-9]*\.?[0-9]+)', text, re.IGNORECASE)
         if confidence_match:
             confidence = float(confidence_match.group(1))
 
-        # Extract explanation
         explanation = re.sub(r'VERDICT:.*(\n|$)', '', text, flags=re.IGNORECASE)
         explanation = re.sub(r'CONFIDENCE:.*(\n|$)', '', explanation, flags=re.IGNORECASE)
         explanation = explanation.strip()
@@ -291,23 +290,20 @@ async def run_check_agent(request: CheckAgentRequest):
             sources=[]
         )
 
-# --- AGENT 3: CRISIS SCANNER (SWARM) ---
+# --- AGENT 3: CRISIS SCANNER ---
 @app.post("/api/scan-crisis", response_model=List[CrisisTrend])
 async def scan_crisis_trends(request: ScanCrisisRequest):
     try:
-        # Step 1: Find trending narratives using Grounding
         scan_response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=f'Find the top 3 trending rumors, news headlines, or viral claims currently circulating about: "{request.topic}". Return ONLY a JSON array of strings, no markdown.',
             config=types.GenerateContentConfig(
-                tools=CHECKER_TOOLS  # Use Search to find what's trending
-                # responseMimeType: "application/json" # REMOVED: Cannot be used with googleSearch
+                tools=CHECKER_TOOLS
             )
         )
         
         claims = []
         try:
-            # Clean potentially markdown-formatted JSON since responseMimeType is disabled
             clean_text = scan_response.text or "[]"
             clean_text = clean_text.replace('```json', '').replace('```', '').strip()
             claims = json.loads(clean_text)
@@ -317,7 +313,6 @@ async def scan_crisis_trends(request: ScanCrisisRequest):
         if len(claims) == 0:
             return []
 
-        # Step 2: Spawn Parallel Check Agents
         async def check_claim(claim: str) -> CrisisTrend:
             check = await run_check_agent(CheckAgentRequest(query=claim))
             return CrisisTrend(
@@ -326,7 +321,7 @@ async def scan_crisis_trends(request: ScanCrisisRequest):
                 claim=claim,
                 severity='HIGH' if check.verdict == 'FAKE' else 'MEDIUM',
                 verdict=check.verdict,
-                volume=random.randint(500, 1500),  # Simulated chatter volume
+                volume=random.randint(500, 1500),
                 timestamp=datetime.now()
             )
 
@@ -351,20 +346,23 @@ async def run_main_agent_synthesis(request: SynthesisRequest):
         print(f"Synthesis Error: {e}")
         return {"text": "Error synthesizing."}
 
-# --- LIVE API: VOICE AGENT (WebSocket) ---
+# --- FIXED LIVE VOICE AGENT (WebSocket) ---
 @app.websocket("/ws/live-session")
 async def create_live_session(websocket: WebSocket):
     """
-    EXACT SAME LOGIC AS TYPESCRIPT: Live Voice Agent with verify_fact tool
+    FIXED: Live Voice Agent with positional arguments for SDK calls
     """
     await websocket.accept()
+    print("🎤 WebSocket connection accepted")
+    
+    session_cm = None
     
     try:
-        # Create live session with EXACT same config as TypeScript
-        async with client.aio.live.connect(
+        # Create live session
+        session_cm = client.aio.live.connect(
             model='gemini-2.5-flash-native-audio-preview-09-2025',
             config=types.LiveConnectConfig(
-                response_modalities=[types.Modality.AUDIO],
+                response_modalities=['AUDIO'],
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
                         prebuilt_voice_config=types.PrebuiltVoiceConfig(
@@ -374,96 +372,163 @@ async def create_live_session(websocket: WebSocket):
                 ),
                 system_instruction=types.Content(
                     parts=[types.Part(
-                        text="You are the Voice Main Agent. You listen to the user. You have access to a tool called 'verify_fact'. If the user asks ANY question about facts, news, weather, or reality, you MUST use 'verify_fact' to check it. Do not answer from your own knowledge. Always cite the source provided by the tool. Be concise."
+                        text="You are the Voice Main Agent for Veritas, a fact-checking system. You listen to the user and help verify claims. You have access to a tool called 'verify_fact'. If the user asks ANY question about facts, news, weather, or reality, you MUST use 'verify_fact' to check it. Do not answer from your own knowledge about current events. Always use the tool and cite the sources provided. Be concise and friendly."
                     )]
                 ),
                 tools=LIVE_AGENT_TOOLS
             )
-        ) as session:
+        )
+        
+        print("✅ Gemini Live session created")
+        
+        # Send initial greeting
+        await websocket.send_json({
+            "type": "status",
+            "message": "Connected to Veritas Voice Agent"
+        })
+        
+        async with session_cm as live_session:
+            print(f"🔗 Session type: {type(live_session)}")
             
-            # Handle incoming messages from client
+            # Task to receive from client and forward to Gemini
             async def receive_from_client():
                 try:
                     while True:
                         data = await websocket.receive_json()
                         
                         if data.get("type") == "audio":
-                            # Send audio to Gemini
-                            await session.send(
-                                types.LiveClientContent(
-                                    turns=[types.LiveClientTurn(
-                                        parts=[types.Part(
+                            # Forward audio to Gemini
+                            audio_data_str = data.get("audio")
+                            if audio_data_str:
+                                # Decode base64 string to bytes
+                                audio_bytes = base64.b64decode(audio_data_str)
+                                
+                                realtime_input = types.LiveClientRealtimeInput(
+                                    media_chunks=[
+                                        types.Part(
                                             inline_data=types.Blob(
                                                 mime_type="audio/pcm",
-                                                data=data.get("audio")
+                                                data=audio_bytes
                                             )
-                                        )]
-                                    )]
-                                )
-                            )
-                        elif data.get("type") == "tool_response":
-                            # Handle tool response (verify_fact result)
-                            await session.send(
-                                types.LiveClientToolResponse(
-                                    function_responses=[
-                                        types.FunctionResponse(
-                                            id=data.get("call_id"),
-                                            name="verify_fact",
-                                            response=data.get("response")
                                         )
                                     ]
                                 )
-                            )
+                                # FIXED: Passed as POSITIONAL argument (no 'input=')
+                                await live_session.send_realtime_input(realtime_input)
+                        
+                        elif data.get("type") == "tool_response":
+                            # Handle tool response from client
+                            call_id = data.get("call_id")
+                            result = data.get("result")
+
+                            if call_id and result:
+                                tool_resp = types.LiveClientToolResponse(
+                                    function_responses=[
+                                        types.FunctionResponse(
+                                            id=call_id,
+                                            name="verify_fact",
+                                            response=result
+                                        )
+                                    ]
+                                )
+                                # FIXED: Passed as POSITIONAL argument (no 'tool_response=')
+                                await live_session.send_tool_response(tool_resp)
+                                print(f"✅ Tool response sent for call: {call_id}")
+
                 except WebSocketDisconnect:
-                    pass
+                    print("🔌 Client disconnected")
+                    raise
+                except asyncio.CancelledError:
+                    print("🔌 Client receive task cancelled")
+                    raise
+                except Exception as e:
+                    print(f"❌ Error receiving from client: {e}")
             
-            # Handle messages from Gemini
+            # Task to receive from Gemini and forward to client
             async def send_to_client():
                 try:
-                    async for response in session.receive():
-                        if response.server_content:
-                            # Audio response
-                            for part in response.server_content.model_turn.parts:
-                                if hasattr(part, 'inline_data') and part.inline_data:
-                                    await websocket.send_json({
-                                        "type": "audio",
-                                        "audio": part.inline_data.data
-                                    })
+                    async for response in live_session.receive():
+                        # Handle server content (audio response)
+                        if hasattr(response, 'server_content') and response.server_content:
+                            if hasattr(response.server_content, 'model_turn') and response.server_content.model_turn:
+                                for part in response.server_content.model_turn.parts:
+                                    if hasattr(part, 'inline_data') and part.inline_data:
+                                        await websocket.send_json({
+                                            "type": "audio",
+                                            "audio": part.inline_data.data
+                                        })
+                                        print("🔊 Audio sent to client")
                         
-                        if response.tool_call:
-                            # Tool call (verify_fact)
+                        # Handle tool calls
+                        if hasattr(response, 'tool_call') and response.tool_call:
                             for call in response.tool_call.function_calls:
                                 if call.name == "verify_fact":
-                                    # Execute verify_fact
                                     query = call.args.get("query", "")
-                                    check_result = await run_check_agent(CheckAgentRequest(query=query))
+                                    print(f"🔍 Tool call: verify_fact('{query}')")
                                     
-                                    # Send tool result back to client (client will forward to Gemini)
-                                    await websocket.send_json({
-                                        "type": "tool_call",
-                                        "call_id": call.id,
-                                        "name": "verify_fact",
-                                        "result": {
+                                    # Execute verify_fact
+                                    try:
+                                        check_result = await run_check_agent(CheckAgentRequest(query=query))
+                                        
+                                        tool_response_data = {
                                             "verdict": check_result.verdict,
                                             "confidence": check_result.confidence,
                                             "explanation": check_result.explanation,
                                             "sources": [{"title": s.title, "uri": s.uri} for s in check_result.sources]
                                         }
-                                    })
+                                        
+                                        tool_resp = types.LiveClientToolResponse(
+                                            function_responses=[
+                                                types.FunctionResponse(
+                                                    id=call.id,
+                                                    name="verify_fact",
+                                                    response=tool_response_data
+                                                )
+                                            ]
+                                        )
+                                        # FIXED: Passed as POSITIONAL argument (no 'tool_response=')
+                                        await live_session.send_tool_response(tool_resp)
+                                        
+                                        print(f"✅ Tool response sent: {check_result.verdict}")
+                                        
+                                        # Also notify client
+                                        await websocket.send_json({
+                                            "type": "tool_executed",
+                                            "call_id": call.id,
+                                            "query": query,
+                                            "result": tool_response_data
+                                        })
+                                    
+                                    except Exception as e:
+                                        print(f"❌ Error executing tool: {e}")
+                
+                except asyncio.CancelledError:
+                    print("🔌 Gemini receive task cancelled")
+                    raise
                 except Exception as e:
-                    print(f"Send error: {e}")
+                    print(f"❌ Error sending to client: {e}")
             
-            # Run both tasks concurrently
-            await asyncio.gather(
-                receive_from_client(),
-                send_to_client()
-            )
-            
+            # Run both tasks concurrently and handle cancellation
+            try:
+                await asyncio.gather(
+                    receive_from_client(),
+                    send_to_client()
+                )
+            except asyncio.CancelledError:
+                print("🛑 Tasks cancelled (Client Disconnect)")
+            except WebSocketDisconnect:
+                print("🛑 WebSocket disconnected")
+            except Exception as e:
+                print(f"🛑 Session error: {e}")
+
     except WebSocketDisconnect:
-        print("Client disconnected")
+        print("🔌 WebSocket disconnected")
     except Exception as e:
-        print(f"WebSocket error: {e}")
-        await websocket.close()
+        print(f"❌ WebSocket error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        print("🛑 Live session closed")
 
 if __name__ == "__main__":
     import uvicorn
