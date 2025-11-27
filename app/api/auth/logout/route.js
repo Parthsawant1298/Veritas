@@ -6,7 +6,10 @@ export async function POST(request) {
   try {
     const cookieStore = await cookies();
     
-    // Clear the authentication cookie securely
+    // Clear the authentication cookie
+    cookieStore.delete('userId'); // .delete is cleaner in newer Next.js versions
+    
+    // Fallback/Explicit set for older compatibility or strict control
     cookieStore.set({
       name: 'userId',
       value: '',
@@ -29,12 +32,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
-
-// Handle other HTTP methods
-export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST to logout.' },
-    { status: 405 }
-  );
 }

@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters long'],
-    select: false // Don't include password in queries by default
+    select: false 
   },
   profilePicture: {
     type: String,
@@ -46,19 +46,23 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Indexes for performance - only use schema.index() for non-unique fields to avoid duplicates
-// Note: email already has unique: true which creates an index automatically
 userSchema.index({ createdAt: -1 });
 
 // Hash password before saving
-userSchema.pre('save', function(next) {
+userSchema.pre('save', async function(next) {
   // Only hash password if it's modified and not already hashed
   if (!this.isModified('password') || this.password.startsWith('$2a$') || this.password.startsWith('$2b$') || this.password.startsWith('$2y$')) {
     return next();
   }
-  
-  // We'll handle hashing in the route instead of middleware
-  return next();
+
+  try {
+    // Hash the password
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 });
 
 // Compare password method
@@ -72,7 +76,6 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   }
 };
 
-// Don't create multiple models
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 export default User;

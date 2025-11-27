@@ -27,34 +27,9 @@ export async function POST(request) {
       );
     }
 
-    // Detailed validation
     const trimmedName = name.trim();
     const trimmedEmail = email.toLowerCase().trim();
 
-    if (trimmedName.length < 2) {
-      return NextResponse.json(
-        { error: 'Name must be at least 2 characters long' },
-        { status: 400 }
-      );
-    }
-
-    if (trimmedName.length > 50) {
-      return NextResponse.json(
-        { error: 'Name cannot exceed 50 characters' },
-        { status: 400 }
-      );
-    }
-
-    // Email validation
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      return NextResponse.json(
-        { error: 'Please provide a valid email address' },
-        { status: 400 }
-      );
-    }
-
-    // Password validation
     if (password.length < 6) {
       return NextResponse.json(
         { error: 'Password must be at least 6 characters long' },
@@ -62,10 +37,8 @@ export async function POST(request) {
       );
     }
 
-
     // Check if user already exists
     const existingUser = await User.findOne({ email: trimmedEmail });
-    
     if (existingUser) {
       return NextResponse.json(
         { error: 'An account with this email already exists' },
@@ -73,18 +46,16 @@ export async function POST(request) {
       );
     }
 
-    // Hash password
+    // Hash password explicitly
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create new user
-    const userData = {
+    const user = await User.create({
       name: trimmedName,
       email: trimmedEmail,
       password: hashedPassword
-    };
-
-    const user = await User.create(userData);
+    });
 
     return NextResponse.json({
       success: true,
@@ -98,35 +69,15 @@ export async function POST(request) {
 
   } catch (error) {
     console.error('Registration error:', error);
-    
-    // Handle duplicate key error
     if (error.code === 11000) {
       return NextResponse.json(
         { error: 'An account with this email already exists' },
         { status: 409 }
       );
     }
-
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const message = Object.values(error.errors)[0]?.message || 'Validation failed';
-      return NextResponse.json(
-        { error: message },
-        { status: 400 }
-      );
-    }
-    
     return NextResponse.json(
       { error: 'Registration failed. Please try again.' },
       { status: 500 }
     );
   }
-}
-
-// Handle other HTTP methods
-export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST to register.' },
-    { status: 405 }
-  );
 }

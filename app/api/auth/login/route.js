@@ -7,7 +7,6 @@ import { rateLimit } from '@/middleware/auth';
 
 export async function POST(request) {
   try {
-    // Rate limiting
     const clientIP = request.headers.get('x-forwarded-for') || 'unknown';
     if (rateLimit(`login-${clientIP}`, 5, 15 * 60 * 1000)) {
       return NextResponse.json(
@@ -19,7 +18,6 @@ export async function POST(request) {
     await connectDB();
     const { email, password } = await request.json();
 
-    // Input validation
     if (!email?.trim() || !password) {
       return NextResponse.json(
         { error: 'Please provide email and password' },
@@ -27,16 +25,7 @@ export async function POST(request) {
       );
     }
 
-    // Email format validation
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email.trim())) {
-      return NextResponse.json(
-        { error: 'Please provide a valid email address' },
-        { status: 400 }
-      );
-    }
-
-    // Find user and include password for comparison
+    // Find user and explicitly select password
     const user = await User.findOne({ 
       email: email.toLowerCase().trim(),
       isActive: true
@@ -51,7 +40,6 @@ export async function POST(request) {
 
     // Check password
     const isPasswordMatch = await user.comparePassword(password);
-    
     if (!isPasswordMatch) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -59,7 +47,7 @@ export async function POST(request) {
       );
     }
 
-    // Update last login without triggering pre-save middleware
+    // Update last login
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
 
     // Set secure cookie
@@ -69,7 +57,7 @@ export async function POST(request) {
       value: user._id.toString(),
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
       path: '/',
       sameSite: 'strict'
     });
@@ -92,12 +80,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
-
-// Handle other HTTP methods
-export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST to login.' },
-    { status: 405 }
-  );
 }
