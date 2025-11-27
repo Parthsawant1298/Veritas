@@ -42,13 +42,13 @@ export default function AboutUs() {
           <ColorBends
             colors={["#ff0066", "#9900ff", "#00ffee", "#ff3399"]}
             rotation={30}
-            speed={0.5}
+            speed={0.15}
             scale={0.9}
-            frequency={1.8}
-            warpStrength={1.5}
-            mouseInfluence={1.0}
-            parallax={0.8}
-            noise={0.03}
+            frequency={1.0}
+            warpStrength={0.6}
+            mouseInfluence={0.3}
+            parallax={0.3}
+            noise={0.005}
             transparent={false}
             className="w-full h-full"
           />
@@ -84,8 +84,9 @@ export default function AboutUs() {
                <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl h-[500px] lg:h-[600px]">
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-transparent opacity-60" />
                   <img
-                    src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-                    alt="Office"
+                    src="https://images.unsplash.com/photo-1677442136019-21780ecad995?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=60"
+                    alt="Veritas AI Technology"
+                    loading="lazy"
                     className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700"
                   />
                   {/* Floating Badge */}

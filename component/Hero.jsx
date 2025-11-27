@@ -5,6 +5,10 @@ import ColorBends from './ColorBends';
 import CurvedLogoLoop from './CurvedLogoLoop';
 
 export default function Hero() {
+  // Performance optimization - reduce animation on low-end devices
+  const isReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const performanceMode = isReducedMotion || (typeof navigator !== 'undefined' && navigator.hardwareConcurrency < 4);
+
   const logoElements = [
     <path d="M3.89 15.672L6.255.461A.542.542 0 017.27.288l2.543 4.771zm16.794 3.692l-2.25-14a.54.54 0 00-.919-.295L3.316 19.365l7.856 4.427a1.621 1.621 0 001.588 0zM14.3 7.147l-1.82-3.482a.542.542 0 00-.96 0L3.53 17.984z"/>,
     <path d="M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"/>,
@@ -29,13 +33,13 @@ export default function Hero() {
         <ColorBends
           colors={["#ff0066", "#9900ff", "#00ffee", "#ff3399"]}
           rotation={30}
-          speed={0.5}
+          speed={performanceMode ? 0.1 : 0.2}
           scale={0.9}
-          frequency={1.8}
-          warpStrength={1.5}
-          mouseInfluence={1.0}
-          parallax={0.8}
-          noise={0.03}
+          frequency={performanceMode ? 0.8 : 1.2}
+          warpStrength={performanceMode ? 0.4 : 0.8}
+          mouseInfluence={performanceMode ? 0.2 : 0.5}
+          parallax={performanceMode ? 0.2 : 0.4}
+          noise={performanceMode ? 0.005 : 0.01}
           transparent={false}
           className="w-full h-full"
         />
