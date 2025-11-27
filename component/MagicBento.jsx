@@ -226,7 +226,7 @@ const MagicCard = ({ item, className }) => {
   return (
     <div
       ref={cardRef}
-      className={`magic-card relative group rounded-3xl border border-white/10 bg-[#0A0A0A] p-8 overflow-hidden hover:border-[#7C3AED]/40 transition-colors duration-300 ${className}`}
+      className={`magic-card relative group rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0A0A0A] p-6 sm:p-8 overflow-hidden hover:border-[#7C3AED]/40 transition-colors duration-300 ${className}`}
       style={{
         '--glow-x': '50%',
         '--glow-y': '50%',
@@ -240,26 +240,33 @@ const MagicCard = ({ item, className }) => {
       {/* Border Glow Effect (CSS generated) */}
       <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 mix-blend-screen"
            style={{
-             background: `radial-gradient(var(--glow-radius) circle at var(--glow-x) var(--glow-y), 
-             rgba(${GLOW_COLOR_RGB}, calc(var(--glow-intensity) * 0.3)) 0%, 
+             background: `radial-gradient(var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+             rgba(${GLOW_COLOR_RGB}, calc(var(--glow-intensity) * 0.3)) 0%,
              transparent 60%)`
            }}
       />
-      
+
       {/* Content */}
       <div className="relative z-10 flex flex-col h-full justify-between">
         <div>
-            <div className="flex justify-between items-start mb-6">
-                <div className="w-12 h-12 rounded-xl bg-[#7C3AED]/10 flex items-center justify-center text-[#7C3AED] group-hover:bg-[#7C3AED] group-hover:text-white transition-all duration-300 shadow-lg">
-                    {item.icon}
+            <div className="flex justify-between items-start mb-4 sm:mb-6">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#7C3AED]/10 flex items-center justify-center text-[#7C3AED] group-hover:bg-[#7C3AED] group-hover:text-white transition-all duration-300 shadow-lg">
+                    {React.cloneElement(item.icon, {
+                      size: 20,
+                      className: "sm:hidden"
+                    })}
+                    {React.cloneElement(item.icon, {
+                      size: 24,
+                      className: "hidden sm:block"
+                    })}
                 </div>
-                <div className="px-3 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">
+                <div className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-white/10 bg-white/5 text-[9px] sm:text-[10px] uppercase tracking-wider text-gray-400 font-semibold">
                     {item.label}
                 </div>
             </div>
-            
-            <h3 className="text-xl font-bold text-white mb-3 group-hover:text-[#7C3AED] transition-colors">{item.title}</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">{item.description}</p>
+
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3 group-hover:text-[#7C3AED] transition-colors leading-tight">{item.title}</h3>
+            <p className="text-gray-400 text-xs sm:text-sm leading-relaxed">{item.description}</p>
         </div>
       </div>
     </div>
@@ -270,8 +277,8 @@ export default function MagicBento() {
   const gridRef = useRef(null);
 
   return (
-    <section className="bg-[#050505] py-16 px-6 md:px-12 font-sans text-white">
-      
+    <section className="bg-[#050505] py-12 sm:py-16 px-4 sm:px-6 lg:px-8 xl:px-12 font-sans text-white">
+
       {/* Global CSS for dot pattern */}
       <style jsx global>{`
         .bg-dot-pattern {
@@ -284,31 +291,32 @@ export default function MagicBento() {
       <GlobalSpotlight gridRef={gridRef} />
 
       <div className="max-w-7xl mx-auto">
-        
+
         {/* --- HEADER --- */}
-        <div className="text-center mb-12">
-          <div className="mb-8">
-            <div className="inline-flex items-center gap-4 pl-1.5 pr-6 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
-              <span className="bg-[#6d28d9] text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)] flex items-center justify-center">
-                <Zap size={16} />
+        <div className="text-center mb-10 sm:mb-12">
+          <div className="mb-6 sm:mb-8">
+            <div className="inline-flex items-center gap-2 sm:gap-4 pl-1.5 pr-4 sm:pr-6 py-1.5 sm:py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
+              <span className="bg-[#6d28d9] text-white text-xs sm:text-sm font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)] flex items-center justify-center">
+                <Zap size={14} className="sm:hidden" />
+                <Zap size={16} className="hidden sm:block" />
               </span>
-              <span className="text-xl text-gray-300 font-medium">Core Capabilities</span>
+              <span className="text-lg sm:text-xl text-gray-300 font-medium">Core Capabilities</span>
             </div>
           </div>
 
-          <h2 className="max-w-4xl mx-auto text-4xl md:text-5xl lg:text-[56px] font-semibold leading-[1.2] tracking-tight mb-6 text-white px-4">
+          <h2 className="max-w-4xl mx-auto text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-[56px] font-semibold leading-[1.2] tracking-tight mb-4 sm:mb-6 text-white px-2 sm:px-4">
             Everything You Need <span className="text-white/30">To Build Faster & Better</span>
           </h2>
-          
-          <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed px-4 mb-8">
+
+          <p className="text-gray-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto leading-relaxed px-2 sm:px-4 mb-6 sm:mb-8">
             Our platform provides a comprehensive suite of tools designed to elevate your workflow and secure your data.
           </p>
         </div>
 
         {/* --- BENTO GRID --- */}
-        <div 
+        <div
             ref={gridRef}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[minmax(280px,auto)]"
+            className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 auto-rows-[minmax(240px,auto)] sm:auto-rows-[minmax(280px,auto)]"
         >
           {cardData.map((item, index) => (
             <MagicCard 

@@ -22,7 +22,7 @@ export default function Hero() {
   const loopedLogos = [...logoElements, ...logoElements, ...logoElements];
 
   return (
-    <div className="relative w-full min-h-screen flex flex-col items-center justify-start pt-32 pb-12 overflow-hidden bg-[#050505]">
+    <div className="relative w-full min-h-screen flex flex-col items-center justify-start pt-20 sm:pt-24 md:pt-28 lg:pt-32 pb-8 sm:pb-10 lg:pb-12 overflow-hidden bg-[#050505]">
       
       {/* ColorBends Animated Background */}
       <div className="absolute inset-0 z-0">
@@ -43,20 +43,20 @@ export default function Hero() {
       </div>
 
       {/* Main Hero Content */}
-      <div className="relative z-10 max-w-5xl mx-auto px-4 flex flex-col items-center text-center">
-        
+      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center text-center">
+
         {/* Badge */}
-        <div className="mb-8 animate-fade-in-up">
-          <div className="inline-flex items-center gap-3 pl-1 pr-4 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
-            <span className="bg-[#6d28d9] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)]">
+        <div className="mb-6 sm:mb-8 animate-fade-in-up">
+          <div className="inline-flex items-center gap-2 sm:gap-3 pl-1 pr-3 sm:pr-4 py-1 sm:py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
+            <span className="bg-[#6d28d9] text-white text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)]">
               v1.0
             </span>
-            <span className="text-sm text-gray-300">Real-time Truth Assessment</span>
+            <span className="text-xs sm:text-sm text-gray-300">Real-time Truth Assessment</span>
           </div>
         </div>
 
         {/* Headline */}
-        <h1 className="text-5xl md:text-7xl lg:text-8xl font-semibold tracking-tight leading-[1.15] mb-6 text-white">
+        <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl xl:text-8xl font-semibold tracking-tight leading-[1.15] mb-4 sm:mb-6 text-white px-2 sm:px-0">
           <span className="block text-gray-100">Truth Through</span>
           <span className="block bg-gradient-to-b from-white via-gray-200 to-gray-500 text-transparent bg-clip-text pb-2">
             Technology.
@@ -64,72 +64,72 @@ export default function Hero() {
         </h1>
 
         {/* Subheadline */}
-        <p className="max-w-2xl text-lg md:text-xl text-gray-400 mb-10 leading-relaxed">
-          Real-time misinformation detection powered by specialized AI agents. <br className="hidden md:block" />
+        <p className="max-w-2xl text-base sm:text-lg md:text-xl text-gray-400 mb-8 sm:mb-10 leading-relaxed px-4 sm:px-0">
+          Real-time misinformation detection powered by specialized AI agents. <br className="hidden sm:block" />
           Chrome extension + web app for instant claim verification.
         </p>
 
         {/* Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-20">
-          <button className="w-full sm:w-auto px-8 py-3.5 bg-gray-100 hover:bg-white text-black rounded-lg font-medium transition-colors duration-200">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-16 sm:mb-20 w-full max-w-md sm:max-w-none">
+          <button className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-gray-100 hover:bg-white text-black rounded-lg font-medium transition-colors duration-200 text-sm sm:text-base">
             Get Started
           </button>
-          
-          <button className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 hover:from-indigo-500/30 hover:to-purple-500/30 border border-indigo-500/30 text-white rounded-lg font-medium backdrop-blur-md transition-all duration-200 shadow-[0_0_20px_rgba(99,102,241,0.15)] hover:shadow-[0_0_30px_rgba(99,102,241,0.3)]">
+
+          <button className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 hover:from-indigo-500/30 hover:to-purple-500/30 border border-indigo-500/30 text-white rounded-lg font-medium backdrop-blur-md transition-all duration-200 shadow-[0_0_20px_rgba(99,102,241,0.15)] hover:shadow-[0_0_30px_rgba(99,102,241,0.3)] text-sm sm:text-base">
             View Documentation
           </button>
         </div>
 
         {/* --- NEW DASHBOARD MOCKUP (The "Rectangle") --- */}
-        <div className="relative w-full max-w-6xl mx-auto perspective-[2000px] group mb-24">
+        <div className="relative w-full max-w-6xl mx-auto perspective-[2000px] group mb-16 sm:mb-20 lg:mb-24 px-4 sm:px-0">
            {/* Glow Effect */}
            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] h-[80%] bg-purple-600/30 blur-[100px] rounded-full -z-10 pointer-events-none transition-all duration-1000 group-hover:bg-purple-600/40"></div>
-           
+
            {/* The Window Frame */}
-           <div className="relative bg-[#0A0A0A] border border-white/10 rounded-xl overflow-hidden shadow-2xl transform rotate-x-12 transition-transform duration-700 ease-out group-hover:rotate-x-0 origin-bottom">
-              
+           <div className="relative bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl overflow-hidden shadow-2xl transform rotate-x-12 transition-transform duration-700 ease-out group-hover:rotate-x-0 origin-bottom">
+
               {/* Toolbar */}
-              <div className="h-12 bg-[#121212] border-b border-white/5 flex items-center px-4 justify-between">
-                 <div className="flex gap-2">
-                    <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
-                    <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
-                    <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+              <div className="h-10 sm:h-12 bg-[#121212] border-b border-white/5 flex items-center px-3 sm:px-4 justify-between">
+                 <div className="flex gap-1.5 sm:gap-2">
+                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#FF5F56]"></div>
+                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#FFBD2E]"></div>
+                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#27C93F]"></div>
                  </div>
                  <div className="flex-1 flex justify-center">
-                    <div className="bg-[#1A1A1A] border border-white/5 rounded-md px-3 py-1 text-xs text-gray-500 flex items-center gap-2 w-64 justify-center">
-                       <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <div className="bg-[#1A1A1A] border border-white/5 rounded-md px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs text-gray-500 flex items-center gap-1 sm:gap-2 w-32 sm:w-48 md:w-64 justify-center">
+                       <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full"></span>
                        veritas.com
                     </div>
                  </div>
-                 <div className="w-16"></div>
+                 <div className="w-8 sm:w-16"></div>
               </div>
 
               {/* Content Area - Split View */}
-              <div className="flex h-[500px] md:h-[600px] relative">
+              <div className="flex flex-col sm:flex-row h-[300px] sm:h-[400px] md:h-[500px] lg:h-[600px] relative">
                  
-                 {/* Sidebar (Hidden on mobile) */}
-                 <div className="hidden md:flex w-64 border-r border-white/5 flex-col bg-[#0D0D0D] p-4 gap-6">
-                    <div className="flex items-center gap-2 text-white/80 font-semibold text-sm mb-2">
-                       <div className="w-6 h-6 bg-purple-500 rounded flex items-center justify-center text-white text-xs font-bold">V</div>
+                 {/* Sidebar (Hidden on mobile, responsive on larger screens) */}
+                 <div className="hidden md:flex w-48 lg:w-64 border-r border-white/5 flex-col bg-[#0D0D0D] p-3 lg:p-4 gap-4 lg:gap-6">
+                    <div className="flex items-center gap-2 text-white/80 font-semibold text-xs lg:text-sm mb-2">
+                       <div className="w-5 h-5 lg:w-6 lg:h-6 bg-purple-500 rounded flex items-center justify-center text-white text-[10px] lg:text-xs font-bold">V</div>
                        Veritas
                     </div>
-                    
+
                     <div className="space-y-1">
-                       <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 mb-2">Tools</div>
+                       <div className="text-[10px] lg:text-xs font-semibold text-gray-500 uppercase tracking-wider px-1 lg:px-2 mb-2">Tools</div>
                        {['Dashboard', 'Verification', 'Reports', 'Settings'].map((item, i) => (
-                          <div key={i} className={`px-2 py-1.5 rounded-md text-sm cursor-pointer flex items-center gap-3 ${i === 0 ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
-                             <div className={`w-1.5 h-1.5 rounded-full ${i === 0 ? 'bg-purple-500' : 'bg-transparent'}`}></div>
-                             {item}
+                          <div key={i} className={`px-1 lg:px-2 py-1 lg:py-1.5 rounded-md text-xs lg:text-sm cursor-pointer flex items-center gap-2 lg:gap-3 ${i === 0 ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                             <div className={`w-1 h-1 lg:w-1.5 lg:h-1.5 rounded-full ${i === 0 ? 'bg-purple-500' : 'bg-transparent'}`}></div>
+                             <span className="truncate">{item}</span>
                           </div>
                        ))}
                     </div>
 
-                    <div className="mt-auto p-4 bg-white/5 rounded-xl border border-white/5">
-                       <div className="flex items-center gap-3 mb-2">
-                          <div className="w-8 h-8 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-full"></div>
-                          <div>
-                             <div className="text-xs font-bold text-white">Pro Plan</div>
-                             <div className="text-[10px] text-gray-400">Active</div>
+                    <div className="mt-auto p-2 lg:p-4 bg-white/5 rounded-xl border border-white/5">
+                       <div className="flex items-center gap-2 lg:gap-3 mb-2">
+                          <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-tr from-purple-500 to-indigo-500 rounded-full"></div>
+                          <div className="min-w-0 flex-1">
+                             <div className="text-[10px] lg:text-xs font-bold text-white truncate">Pro Plan</div>
+                             <div className="text-[9px] lg:text-[10px] text-gray-400">Active</div>
                           </div>
                        </div>
                        <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
@@ -139,40 +139,42 @@ export default function Hero() {
                  </div>
 
                  {/* Main Canvas */}
-                 <div className="flex-1 bg-black relative overflow-hidden p-8 md:p-16 flex flex-col justify-center items-center text-center">
+                 <div className="flex-1 bg-black relative overflow-hidden p-4 sm:p-6 md:p-8 lg:p-16 flex flex-col justify-center items-center text-center">
                     {/* Background Gradients inside canvas */}
                     <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 blur-[100px] rounded-full pointer-events-none"></div>
                     <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/10 blur-[100px] rounded-full pointer-events-none"></div>
 
                     {/* Fake Hero Content */}
-                    <div className="relative z-10 max-w-2xl">
-                        <div className="inline-block px-3 py-1 rounded-full border border-white/10 bg-white/5 text-xs text-gray-400 mb-6">
+                    <div className="relative z-10 max-w-2xl px-2 sm:px-0">
+                        <div className="inline-block px-2 sm:px-3 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] sm:text-xs text-gray-400 mb-4 sm:mb-6">
                            Real-time AI Verification
                         </div>
-                        <h2 className="text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
+                        <h2 className="text-lg sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-4 sm:mb-6 leading-tight">
                            Advanced Misinformation Detection powered by <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Veritas AI</span>
                         </h2>
-                        
+
                         {/* App Icons Grid */}
-                        <div className="flex items-center justify-center gap-4 mt-10">
+                        <div className="flex items-center justify-center gap-2 sm:gap-3 lg:gap-4 mt-6 sm:mt-8 lg:mt-10">
                            {[1,2,3,4,5].map((_, i) => (
-                              <div key={i} className="w-12 h-12 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors hover:scale-110 duration-200 cursor-pointer">
-                                 <div className="w-6 h-6 rounded-md bg-gradient-to-br from-gray-700 to-black opacity-50"></div>
+                              <div key={i} className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-lg sm:rounded-xl border border-white/10 bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors hover:scale-110 duration-200 cursor-pointer">
+                                 <div className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 rounded-sm sm:rounded-md bg-gradient-to-br from-gray-700 to-black opacity-50"></div>
                               </div>
                            ))}
-                           <div className="w-12 h-12 rounded-full border border-dashed border-white/20 flex items-center justify-center text-gray-500 hover:text-white cursor-pointer hover:border-white/40">
-                              <Plus size={20} />
+                           <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full border border-dashed border-white/20 flex items-center justify-center text-gray-500 hover:text-white cursor-pointer hover:border-white/40">
+                              <Plus size={14} className="sm:hidden" />
+                              <Plus size={16} className="hidden sm:block lg:hidden" />
+                              <Plus size={20} className="hidden lg:block" />
                            </div>
                         </div>
                     </div>
 
                     {/* Floating Elements simulating a design tool */}
-                    <div className="absolute top-8 right-8 bg-[#1A1A1A] border border-white/10 rounded-lg p-2 shadow-xl hidden lg:block">
-                        <div className="flex gap-2">
-                           <div className="p-2 hover:bg-white/10 rounded"><MousePointer2 size={16} className="text-white" /></div>
-                           <div className="p-2 hover:bg-white/10 rounded"><Type size={16} className="text-gray-400" /></div>
-                           <div className="p-2 hover:bg-white/10 rounded"><Layout size={16} className="text-gray-400" /></div>
-                           <div className="p-2 hover:bg-white/10 rounded"><ImageIcon size={16} className="text-gray-400" /></div>
+                    <div className="absolute top-4 sm:top-6 lg:top-8 right-4 sm:right-6 lg:right-8 bg-[#1A1A1A] border border-white/10 rounded-lg p-1.5 sm:p-2 shadow-xl hidden md:block">
+                        <div className="flex gap-1 sm:gap-2">
+                           <div className="p-1 sm:p-2 hover:bg-white/10 rounded"><MousePointer2 size={12} className="text-white sm:hidden" /><MousePointer2 size={16} className="text-white hidden sm:block" /></div>
+                           <div className="p-1 sm:p-2 hover:bg-white/10 rounded"><Type size={12} className="text-gray-400 sm:hidden" /><Type size={16} className="text-gray-400 hidden sm:block" /></div>
+                           <div className="p-1 sm:p-2 hover:bg-white/10 rounded"><Layout size={12} className="text-gray-400 sm:hidden" /><Layout size={16} className="text-gray-400 hidden sm:block" /></div>
+                           <div className="p-1 sm:p-2 hover:bg-white/10 rounded"><ImageIcon size={12} className="text-gray-400 sm:hidden" /><ImageIcon size={16} className="text-gray-400 hidden sm:block" /></div>
                         </div>
                     </div>
                  </div>
@@ -184,12 +186,12 @@ export default function Hero() {
       </div>
 
       {/* Curved Logo Loop */}
-      <div className="relative z-10 w-full mx-auto overflow-hidden mb-8">
+      <div className="relative z-10 w-full mx-auto overflow-hidden mb-6 sm:mb-8">
         {/* Left fade */}
-        <div className="absolute left-0 top-0 bottom-0 w-64 bg-gradient-to-r from-[#050505] to-transparent z-20 pointer-events-none"></div>
+        <div className="absolute left-0 top-0 bottom-0 w-32 sm:w-48 lg:w-64 bg-gradient-to-r from-[#050505] to-transparent z-20 pointer-events-none"></div>
         {/* Right fade */}
-        <div className="absolute right-0 top-0 bottom-0 w-64 bg-gradient-to-l from-[#050505] to-transparent z-20 pointer-events-none"></div>
-        
+        <div className="absolute right-0 top-0 bottom-0 w-32 sm:w-48 lg:w-64 bg-gradient-to-l from-[#050505] to-transparent z-20 pointer-events-none"></div>
+
         <CurvedLogoLoop logos={loopedLogos} />
       </div>
       

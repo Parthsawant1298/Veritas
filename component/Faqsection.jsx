@@ -31,27 +31,32 @@ const faqData = [
 
 const FAQItem = ({ item, isOpen, onClick }) => {
   return (
-    <div className={`group rounded-3xl border bg-[#0A0A0A] overflow-hidden transition-all duration-300 ${isOpen ? 'border-[#7C3AED]/50' : 'border-white/10 hover:border-[#7C3AED]/30'}`}>
+    <div className={`group rounded-2xl sm:rounded-3xl border bg-[#0A0A0A] overflow-hidden transition-all duration-300 ${isOpen ? 'border-[#7C3AED]/50' : 'border-white/10 hover:border-[#7C3AED]/30'}`}>
       <button
         onClick={onClick}
-        className="w-full flex items-center justify-between p-6 text-left focus:outline-none"
+        className="w-full flex items-center justify-between p-4 sm:p-6 text-left focus:outline-none"
       >
-        <span className="text-lg font-medium text-white group-hover:text-[#7C3AED] transition-colors">
+        <span className="text-base sm:text-lg font-medium text-white group-hover:text-[#7C3AED] transition-colors leading-tight pr-3 sm:pr-4">
           {item.question}
         </span>
-        <div className={`p-2 rounded-full border border-white/10 bg-white/5 transition-transform duration-300 ${isOpen ? 'rotate-180 bg-[#7C3AED]/10 border-[#7C3AED]/30' : ''}`}>
+        <div className={`p-1.5 sm:p-2 rounded-full border border-white/10 bg-white/5 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180 bg-[#7C3AED]/10 border-[#7C3AED]/30' : ''}`}>
           {isOpen ? (
-             <Minus size={20} className={isOpen ? "text-[#7C3AED]" : "text-gray-400"} />
+             <Minus size={16} className="text-[#7C3AED] sm:hidden" />
           ) : (
-             <Plus size={20} className="text-gray-400 group-hover:text-white" />
+             <Plus size={16} className="text-gray-400 group-hover:text-white sm:hidden" />
+          )}
+          {isOpen ? (
+             <Minus size={20} className="text-[#7C3AED] hidden sm:block" />
+          ) : (
+             <Plus size={20} className="text-gray-400 group-hover:text-white hidden sm:block" />
           )}
         </div>
       </button>
-      
+
       {/* Simple conditional rendering for the answer */}
-      <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 pb-6 px-6' : 'grid-rows-[0fr] opacity-0'}`}>
+      <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 pb-4 sm:pb-6 px-4 sm:px-6' : 'grid-rows-[0fr] opacity-0'}`}>
         <div className="overflow-hidden">
-          <p className="text-gray-400 text-sm leading-relaxed pt-2 border-t border-white/5">
+          <p className="text-gray-400 text-xs sm:text-sm leading-relaxed pt-2 border-t border-white/5">
             {item.answer}
           </p>
         </div>
@@ -101,28 +106,29 @@ export default function FAQ() {
   ];
 
   return (
-    <section className="bg-[#050505] py-24 px-6 md:px-12 font-sans">
+    <section className="bg-[#050505] py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 xl:px-12 font-sans">
       <div className="max-w-7xl mx-auto">
         {/* --- Title & Subtitle at Top --- */}
-        <div className="text-center mb-16">
-          <div className="mb-8">
-            <div className="inline-flex items-center gap-4 pl-1.5 pr-6 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
-              <span className="bg-[#6d28d9] text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)] flex items-center justify-center">
-                <HelpCircle size={16} />
+        <div className="text-center mb-12 sm:mb-16">
+          <div className="mb-6 sm:mb-8">
+            <div className="inline-flex items-center gap-2 sm:gap-4 pl-1.5 pr-4 sm:pr-6 py-1.5 sm:py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
+              <span className="bg-[#6d28d9] text-white text-xs sm:text-sm font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)] flex items-center justify-center">
+                <HelpCircle size={14} className="sm:hidden" />
+                <HelpCircle size={16} className="hidden sm:block" />
               </span>
-              <span className="text-xl text-gray-300 font-medium">FAQ</span>
+              <span className="text-lg sm:text-xl text-gray-300 font-medium">FAQ</span>
             </div>
           </div>
-          <h2 className="text-4xl md:text-5xl lg:text-[56px] font-semibold leading-[1.2] tracking-tight mb-6 text-white">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-[56px] font-semibold leading-[1.2] tracking-tight mb-4 sm:mb-6 text-white px-2 sm:px-0">
             Frequently Asked <span className="text-white/30">Questions</span>
           </h2>
-          <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+          <p className="text-gray-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
             Have questions? Our FAQ section has you covered with quick answers to the most common inquiries.
           </p>
         </div>
         {/* --- Two Column FAQ Grid --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+          <div className="flex flex-col gap-3 sm:gap-4">
             {leftFaqs.map((item, idx) => (
               <FAQItem
                 key={idx}
@@ -132,7 +138,7 @@ export default function FAQ() {
               />
             ))}
           </div>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:gap-4">
             {rightFaqs.map((item, idx) => (
               <FAQItem
                 key={idx}
