@@ -217,7 +217,12 @@ const ChatInterface = ({
                 
                 {/* Time */}
                 <span className="text-[10px] text-gray-600 font-medium mt-1.5 block opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                  {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}
+                  {msg.timestamp ? (() => {
+                    const date = new Date(msg.timestamp);
+                    const hours = date.getHours().toString().padStart(2, '0');
+                    const minutes = date.getMinutes().toString().padStart(2, '0');
+                    return `${hours}:${minutes}`;
+                  })() : ''}
                 </span>
               </div>
             )}
@@ -299,7 +304,7 @@ export default function ChatPage() {
         id: 1,
         sender: 'bot',
         text: 'I am ready to verify information. What claim would you like me to check today?',
-        timestamp: new Date(),
+        timestamp: null, // Will be set on client mount
         agentUsed: 'SYSTEM'
     }
   ]);
@@ -307,6 +312,15 @@ export default function ChatPage() {
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isLiveSessionActive, setIsLiveSessionActive] = useState(false);
   const [agentStatus, setAgentStatus] = useState(null);
+
+  // Set initial timestamp on client mount to avoid hydration mismatch
+  useEffect(() => {
+    setMessages(prev => prev.map(msg => 
+      msg.id === 1 && !msg.timestamp 
+        ? { ...msg, timestamp: new Date() }
+        : msg
+    ));
+  }, []);
 
   const handleSendMessage = async (text) => {
     const userMsg = { id: Date.now(), sender: 'user', text, timestamp: new Date() };
