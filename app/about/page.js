@@ -1,5 +1,13 @@
-import About from '../../component/About';
+import Navbar from "@/component/Navbar";
+import Footer from "@/component/Footer";
+import Aboutus from "@/component/Aboutus";
 
 export default function AboutPage() {
-  return <About />;
+  return (
+    <>
+      <Navbar />
+      <Aboutus />
+      <Footer />
+    </>
+  );
 }
