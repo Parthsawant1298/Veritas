@@ -268,21 +268,30 @@ async def scan_crisis_trends(topic: str) -> List[Dict[str, Any]]:
 # --- SYNTHESIS ---
 async def run_main_agent_synthesis(user_query: str, check_result: Dict[str, Any]) -> str:
     try:
+        print(f"🔍 Synthesis Input - User Query: {user_query[:100]}...")
+        print(f"🔍 Synthesis Input - Check Result: {check_result}")
+
+        # Sanitize inputs to prevent Gemini issues
+        clean_user_query = str(user_query).replace('"', "'").strip()
+        clean_verdict = str(check_result.get("verdict", "UNCERTAIN")).strip()
+        clean_confidence = float(check_result.get("confidence", 0.5))
+        clean_explanation = str(check_result.get("explanation", "No explanation provided")).replace('"', "'").strip()
+
         # Create a professional fact-checking response prompt
         synthesis_prompt = f"""
 You are a professional fact-checker creating a clear, well-structured response.
 
-USER ASKED: "{user_query}"
+USER ASKED: {clean_user_query}
 
 FACT-CHECK RESULTS:
-- Verdict: {check_result["verdict"]}
-- Confidence: {check_result["confidence"]}
-- Explanation: {check_result["explanation"]}
+- Verdict: {clean_verdict}
+- Confidence: {clean_confidence}
+- Explanation: {clean_explanation}
 
 Create a professional response that follows this structure:
 
 **Start with clear verdict using emoji:**
-- ✅ for TRUE/REAL claims  
+- ✅ for TRUE/REAL claims
 - ❌ for FALSE/FAKE claims
 - ⚠️ for MIXED/UNCLEAR claims
 
@@ -384,7 +393,14 @@ async def api_scan_crisis(request: ScanCrisisRequest):
 
 @app.post("/api/synthesis")
 async def api_synthesis(request: SynthesisRequest):
+    print(f"📩 Synthesis API called")
+    print(f"📩 User Query: {request.userQuery[:100]}...")
+    print(f"📩 Check Result Keys: {list(request.checkResult.keys()) if request.checkResult else 'None'}")
+    print(f"📩 Check Result: {request.checkResult}")
+
     text = await run_main_agent_synthesis(request.userQuery, request.checkResult)
+
+    print(f"📤 Synthesis API returning: {text[:100]}..." if text else "📤 Synthesis API returning: None/Empty")
     return {"text": text}
 
 # WebSocket for Live Voice - CLEAN VERSION

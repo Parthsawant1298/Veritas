@@ -13,11 +13,51 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Handle Context Menu (Selection Mode)
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'veritas-check' && info.selectionText) {
-    runVerificationFlow(info.selectionText, tab.id);
+    try {
+      // Ensure content script is injected
+      await ensureContentScriptInjected(tab.id);
+      // Run verification flow
+      runVerificationFlow(info.selectionText, tab.id);
+    } catch (error) {
+      console.error('Context menu error:', error);
+    }
   }
 });
+
+// Helper function to ensure content script is injected
+async function ensureContentScriptInjected(tabId) {
+  try {
+    // Try to ping the content script
+    await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+  } catch (error) {
+    // Content script not loaded, inject it
+    console.log('Injecting content script...');
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js']
+    });
+    // Give it a moment to initialize
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
+// Helper function to send messages safely
+async function sendMessageSafely(tabId, message) {
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    console.log('Message send failed, retrying...');
+    try {
+      // Try to inject content script and retry
+      await ensureContentScriptInjected(tabId);
+      await chrome.tabs.sendMessage(tabId, message);
+    } catch (retryError) {
+      console.error('Failed to send message after retry:', retryError);
+    }
+  }
+}
 
 // Handle Messages from Popup/Content
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -49,84 +89,112 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// --- CORE AGENTIC FLOW ---
+// --- CORE AGENTIC FLOW (MATCHING MAIN.JSX) ---
 async function runVerificationFlow(text, tabId) {
   try {
-    // 1. Notify UI: Agent Started
+    // STEP 1: Main Agent decides what to do (like main.jsx)
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { 
-        action: 'status_update', 
-        status: 'thinking', 
-        message: '🔍 Check Agent analyzing...' 
+      await sendMessageSafely(tabId, {
+        action: 'status_update',
+        status: 'thinking',
+        message: '🤖 Main Agent analyzing...'
       });
     }
 
-    // 2. CALL CHECK AGENT (The Researcher)
-    console.log("🚀 Calling Check Agent...");
-    const checkResponse = await fetch(`${API_BASE}/check-agent`, {
+    console.log("🚀 Calling Main Agent...");
+    const mainResponse = await fetch(`${API_BASE}/main-agent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: text })
-    });
-    
-    if (!checkResponse.ok) throw new Error('Check Agent failed');
-    const checkResult = await checkResponse.json();
-
-    // 3. CALL SYNTHESIS AGENT (The Spokesperson)
-    console.log("✨ Calling Synthesis Agent...");
-    if (tabId) {
-      chrome.tabs.sendMessage(tabId, { 
-        action: 'status_update', 
-        status: 'synthesizing', 
-        message: '✨ Synthesizing report...' 
-      });
-    }
-    
-    const synthesisResponse = await fetch(`${API_BASE}/synthesis`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userQuery: text,
-        checkResult: checkResult
-      })
+      body: JSON.stringify({ userText: text })
     });
 
-    if (!synthesisResponse.ok) {
-      throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
-    }
+    if (!mainResponse.ok) throw new Error('Main Agent failed');
+    const plan = await mainResponse.json();
 
-    const synthesisResult = await synthesisResponse.json();
+    if (plan.action === "DELEGATE_TO_CHECKER") {
+      // STEP 2: Check Agent verification (like main.jsx)
+      if (tabId) {
+        await sendMessageSafely(tabId, {
+          action: 'status_update',
+          status: 'thinking',
+          message: '🔍 Check Agent verifying...'
+        });
+      }
 
-    // Handle case where synthesis returns empty or null text
-    if (!synthesisResult.text || synthesisResult.text.trim() === '') {
-      console.warn('Empty synthesis response, using fallback');
-      const verdict_emoji = checkResult.verdict === "REAL" ? "✅" : checkResult.verdict === "FAKE" ? "❌" : "⚠️";
-      synthesisResult.text = `${verdict_emoji} **This claim is ${checkResult.verdict}.**\n\n${checkResult.explanation || 'Based on available information.'}\n\n**Confidence Level:** ${Math.round((checkResult.confidence || 0.5) * 100)}%`;
-    }
-
-    // 4. COMBINE & RETURN
-    const finalPacket = {
-      claim: text,
-      verdict: checkResult.verdict,        // REAL / FAKE / UNCERTAIN
-      confidence: checkResult.confidence,  // 0.0 - 1.0
-      sources: checkResult.sources,        // Array of links
-      analysis: synthesisResult.text       // The human-readable synthesis
-    };
-
-    // 5. Send to UI
-    if (tabId) {
-      chrome.tabs.sendMessage(tabId, { 
-        action: 'validation_complete', 
-        result: finalPacket 
+      console.log("🚀 Calling Check Agent...");
+      const checkResponse = await fetch(`${API_BASE}/check-agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: plan.checker_query })
       });
-    }
 
-    return { success: true, data: finalPacket };
+      if (!checkResponse.ok) throw new Error('Check Agent failed');
+      const checkResult = await checkResponse.json();
+
+      // STEP 3: Synthesis Agent (like main.jsx)
+      if (tabId) {
+        await sendMessageSafely(tabId, {
+          action: 'status_update',
+          status: 'synthesizing',
+          message: '✨ Synthesizing response...'
+        });
+      }
+
+      const synthesisResponse = await fetch(`${API_BASE}/synthesis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userQuery: text,
+          checkResult: checkResult
+        })
+      });
+
+      if (!synthesisResponse.ok) throw new Error('Synthesis failed');
+      const synthesisResult = await synthesisResponse.json();
+
+      // 4. COMBINE & RETURN (like main.jsx)
+      const finalPacket = {
+        claim: text,
+        verdict: checkResult.verdict,
+        confidence: checkResult.confidence,
+        sources: checkResult.sources,
+        analysis: synthesisResult.text
+      };
+
+      // 5. Send to UI
+      if (tabId) {
+        await sendMessageSafely(tabId, {
+          action: 'validation_complete',
+          result: finalPacket
+        });
+      }
+
+      return { success: true, data: finalPacket };
+
+    } else {
+      // Handle other plan actions (like DIRECT_REPLY)
+      const responseText = plan.reply_text || "I can help you verify information.";
+
+      if (tabId) {
+        await sendMessageSafely(tabId, {
+          action: 'validation_complete',
+          result: {
+            claim: text,
+            verdict: 'INFO',
+            confidence: 1.0,
+            sources: [],
+            analysis: responseText
+          }
+        });
+      }
+
+      return { success: true, data: { analysis: responseText } };
+    }
 
   } catch (error) {
     console.error("Agent Error:", error);
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { action: 'agent_error', error: error.message });
+      await sendMessageSafely(tabId, { action: 'agent_error', error: error.message });
     }
     return { success: false, error: error.message };
   }
@@ -144,7 +212,7 @@ async function runPageScan(pageText, tabId) {
 
     if (claims.length === 0) {
       if (tabId) {
-        chrome.tabs.sendMessage(tabId, { 
+        await sendMessageSafely(tabId, { 
           action: 'agent_error', 
           error: 'No verifiable claims found on this page.' 
         });
@@ -154,7 +222,7 @@ async function runPageScan(pageText, tabId) {
 
     // Notify UI
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { 
+      await sendMessageSafely(tabId, { 
         action: 'status_update', 
         status: 'scanning', 
         message: `📡 Scanning ${claims.length} claims...` 
@@ -194,7 +262,7 @@ async function runPageScan(pageText, tabId) {
 
     // Send aggregated results
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { 
+      await sendMessageSafely(tabId, { 
         action: 'scan_complete', 
         results: results
       });
@@ -205,20 +273,20 @@ async function runPageScan(pageText, tabId) {
   } catch (error) {
     console.error("Page scan error:", error);
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { action: 'agent_error', error: error.message });
+      await sendMessageSafely(tabId, { action: 'agent_error', error: error.message });
     }
     return { success: false, error: error.message };
   }
 }
 
-// --- IMAGE CAPTURE FLOW ---
+// --- IMAGE CAPTURE FLOW (MATCHING MAIN.JSX) ---
 async function handleScreenshotCapture(area, tabId) {
   console.log('handleScreenshotCapture called with area:', area, 'tabId:', tabId);
 
   try {
     // Notify UI: Starting capture
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, {
+      await sendMessageSafely(tabId, {
         action: 'status_update',
         status: 'capturing',
         message: '📸 Processing screenshot...'
@@ -237,13 +305,13 @@ async function handleScreenshotCapture(area, tabId) {
       throw new Error('Failed to crop screenshot');
     }
 
-    // 1. CALL IMAGE AGENT (Extract content from image)
-    console.log("🖼 Calling Image Agent...");
+    // STEP 1: Process image first (like main.jsx)
+    console.log("🖼️ Calling Image Agent...");
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, {
+      await sendMessageSafely(tabId, {
         action: 'status_update',
         status: 'analyzing',
-        message: '🔍 Analyzing image content...'
+        message: '🖼️ Image Agent processing...'
       });
     }
 
@@ -252,7 +320,7 @@ async function handleScreenshotCapture(area, tabId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         base64Image: croppedBase64,
-        userMessage: "Extract all claims and factual information from this image for fact-checking."
+        userMessage: "Verify content in captured image"
       })
     });
 
@@ -263,32 +331,32 @@ async function handleScreenshotCapture(area, tabId) {
       throw new Error('No readable content found in image');
     }
 
-    // 2. CALL CHECK AGENT (Fact-check the extracted content)
-    console.log("✨ Calling Check Agent for image content...");
+    // STEP 2: Send extracted content to Check Agent (like main.jsx)
+    console.log("🔍 Calling Check Agent for image content...");
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, {
+      await sendMessageSafely(tabId, {
         action: 'status_update',
         status: 'fact_checking',
-        message: '✨ Fact-checking content...'
+        message: '🔍 Check Agent verifying image content...'
       });
     }
 
     const checkResponse = await fetch(`${API_BASE}/check-agent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: imageResult.extracted_content })
+      body: JSON.stringify({ query: imageResult.combined_query })
     });
 
     if (!checkResponse.ok) throw new Error('Fact-checking failed');
     const checkResult = await checkResponse.json();
 
-    // 3. CALL SYNTHESIS AGENT (Create human-readable report)
-    console.log("🔮 Calling Synthesis Agent...");
+    // STEP 3: Synthesis (like main.jsx)
+    console.log("✨ Calling Synthesis Agent...");
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, {
+      await sendMessageSafely(tabId, {
         action: 'status_update',
         status: 'synthesizing',
-        message: '🔮 Generating report...'
+        message: '✨ Synthesizing image analysis...'
       });
     }
 
@@ -296,25 +364,15 @@ async function handleScreenshotCapture(area, tabId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userQuery: `Image content: ${imageResult.extracted_content}`,
+        userQuery: "Image analysis: Verify content in uploaded image",
         checkResult: checkResult
       })
     });
 
-    if (!synthesisResponse.ok) {
-      throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
-    }
-
+    if (!synthesisResponse.ok) throw new Error('Synthesis failed');
     const synthesisResult = await synthesisResponse.json();
 
-    // Handle case where synthesis returns empty or null text
-    if (!synthesisResult.text || synthesisResult.text.trim() === '') {
-      console.warn('Empty synthesis response for image, using fallback');
-      const verdict_emoji = checkResult.verdict === "REAL" ? "✅" : checkResult.verdict === "FAKE" ? "❌" : "⚠️";
-      synthesisResult.text = `${verdict_emoji} **This claim is ${checkResult.verdict}.**\n\n${checkResult.explanation || 'Based on available information.'}\n\n**Confidence Level:** ${Math.round((checkResult.confidence || 0.5) * 100)}%`;
-    }
-
-    // 4. COMBINE & RETURN (Same format as text verification)
+    // 4. COMBINE & RETURN (like main.jsx)
     const finalPacket = {
       claim: imageResult.extracted_content,
       verdict: checkResult.verdict,
@@ -324,9 +382,9 @@ async function handleScreenshotCapture(area, tabId) {
       extracted_content: imageResult.extracted_content
     };
 
-    // 5. Send to UI (using image-specific display)
+    // 5. Send to UI
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, {
+      await sendMessageSafely(tabId, {
         action: 'image_validation_complete',
         result: finalPacket
       });
@@ -337,7 +395,7 @@ async function handleScreenshotCapture(area, tabId) {
   } catch (error) {
     console.error("Image capture error:", error);
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { action: 'agent_error', error: error.message });
+      await sendMessageSafely(tabId, { action: 'agent_error', error: error.message });
     }
     return { success: false, error: error.message };
   }

@@ -5,6 +5,10 @@ console.log('Veritas content script loaded');
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('Content script received message:', msg);
 
+  if (msg.action === 'ping') {
+    sendResponse({ status: 'ready' });
+    return true;
+  }
   if (msg.action === 'status_update') showLoading(msg.message);
   if (msg.action === 'validation_complete') showResult(msg.result);
   if (msg.action === 'scan_complete') showScanResults(msg.results);
