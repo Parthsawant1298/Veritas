@@ -178,7 +178,50 @@ async def run_check_agent(query: str) -> Dict[str, Any]:
             "sources": []
         }
 
-# --- AGENT 3: CRISIS SCANNER ---
+# --- AGENT 4: IMAGE AGENT ---
+async def process_image_content(base64_image: str, user_message: str = "") -> Dict[str, Any]:
+    try:
+        response = ai.models.generate_content(
+            model="gemini-2.5-flash",
+            contents={
+                "parts": [
+                    {"inline_data": {"mime_type": "image/jpeg", "data": base64_image}},
+                    {"text": f"Extract and describe all text, claims, and factual information visible in this image. Focus on news headlines, social media posts, claims, or any information that could be fact-checked. User's question: '{user_message}' If no user question, just extract all verifiable claims from the image."}
+                ]
+            },
+            config={"temperature": 0.2}
+        )
+        
+        extracted_content = response.text or ""
+        return {
+            "extracted_content": extracted_content,
+            "user_message": user_message,
+            "combined_query": f"Image content: {extracted_content}. User question: {user_message}" if user_message else extracted_content
+        }
+    except Exception as error:
+        print(f"Image Agent Error: {error}")
+        return {
+            "extracted_content": "Failed to process image",
+            "user_message": user_message,
+            "combined_query": user_message or "Failed to process image"
+        }
+
+# Update orchestrator schema to include image handling
+orchestrator_schema = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ['DIRECT_REPLY', 'DELEGATE_TO_CHECKER', 'SCAN_CRISIS', 'PROCESS_IMAGE'],
+            "description": "Use DELEGATE for specific checks. Use SCAN_CRISIS if user asks to 'scan', 'monitor', 'find trends', or 'check news' about a broad topic. Use PROCESS_IMAGE if user uploaded an image for fact-checking."
+        },
+        "reasoning": {"type": "string", "description": "Internal thought process."},
+        "reply_text": {"type": "string", "description": "Response if DIRECT_REPLY."},
+        "checker_query": {"type": "string", "description": "Optimized search query for the Check Agent."},
+        "scan_topic": {"type": "string", "description": "The broad topic to scan for emerging misinformation."}
+    },
+    "required": ['action', 'reasoning']
+}
 async def scan_crisis_trends(topic: str) -> List[Dict[str, Any]]:
     try:
         scan_response = ai.models.generate_content(
@@ -208,6 +251,9 @@ async def scan_crisis_trends(topic: str) -> List[Dict[str, Any]]:
                 "claim": claim,
                 "severity": 'HIGH' if check["verdict"] == 'FAKE' else 'MEDIUM',
                 "verdict": check["verdict"],
+                "confidence": check["confidence"],
+                "explanation": check["explanation"],
+                "sources": check["sources"],  # Include sources from fact check
                 "volume": random.randint(500, 1500),
                 "timestamp": None
             }
@@ -222,15 +268,67 @@ async def scan_crisis_trends(topic: str) -> List[Dict[str, Any]]:
 # --- SYNTHESIS ---
 async def run_main_agent_synthesis(user_query: str, check_result: Dict[str, Any]) -> str:
     try:
+        # Create a professional fact-checking response prompt
+        synthesis_prompt = f"""
+You are a professional fact-checker creating a clear, well-structured response.
+
+USER ASKED: "{user_query}"
+
+FACT-CHECK RESULTS:
+- Verdict: {check_result["verdict"]}
+- Confidence: {check_result["confidence"]}
+- Explanation: {check_result["explanation"]}
+
+Create a professional response that follows this structure:
+
+**Start with clear verdict using emoji:**
+- ✅ for TRUE/REAL claims  
+- ❌ for FALSE/FAKE claims
+- ⚠️ for MIXED/UNCLEAR claims
+
+**Then provide explanation in 2-3 clear paragraphs:**
+- First paragraph: Direct answer to user's question
+- Second paragraph: Key evidence and context
+- Third paragraph (if needed): Additional important details
+
+**Include confidence level** as a percentage.
+
+**End with a note about sources** (don't list them, just mention they support the verdict).
+
+Write in a conversational but authoritative tone, like a professional fact-checker explaining to a friend. Use proper paragraphs, not bullet points. Be clear and engaging.
+
+Example format:
+❌ **This claim is FALSE.**
+
+[Explanation paragraph 1]
+
+[Explanation paragraph 2]
+
+**Confidence Level:** XX%
+
+*This assessment is based on verification from multiple reliable sources.*
+"""
+
         response = ai.models.generate_content(
             model="gemini-2.5-flash",
-            contents=f'Synthesize response for "{user_query}" based on: Verdict {check_result["verdict"]}, Explanation: {check_result["explanation"]}',
-            config={"temperature": 0.6}
+            contents=synthesis_prompt,
+            config={
+                "temperature": 0.3,
+                "max_output_tokens": 800
+            }
         )
-        return response.text or "Verified."
+        
+        if response.text:
+            return response.text
+            
+        # If response.text is empty, raise exception to trigger fallback
+        raise ValueError("Empty response from synthesis model")
+
     except Exception as e:
         print(f"Synthesis Error: {e}")
-        return "Error synthesizing."
+        # Fallback response
+        verdict_emoji = "✅" if check_result["verdict"] == "REAL" else "❌" if check_result["verdict"] == "FAKE" else "⚠️"
+        return f"{verdict_emoji} **This claim is {check_result['verdict']}.**\n\n{check_result.get('explanation', 'Based on available information.')}\n\n**Confidence Level:** {int(check_result.get('confidence', 0.5) * 100)}%"
 
 # ==================== FASTAPI ROUTES ====================
 
@@ -244,6 +342,10 @@ class MainAgentRequest(BaseModel):
 
 class CheckAgentRequest(BaseModel):
     query: str
+
+class ImageRequest(BaseModel):
+    base64Image: str
+    userMessage: str = ""
 
 class ScanCrisisRequest(BaseModel):
     topic: str
@@ -266,6 +368,11 @@ async def api_main_agent(request: MainAgentRequest):
 @app.post("/api/check-agent")
 async def api_check_agent(request: CheckAgentRequest):
     result = await run_check_agent(request.query)
+    return result
+
+@app.post("/api/process-image")
+async def api_process_image(request: ImageRequest):
+    result = await process_image_content(request.base64Image, request.userMessage)
     return result
 
 @app.post("/api/scan-crisis")

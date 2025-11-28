@@ -1,6 +1,7 @@
 "use client";
 import React, { useRef, useEffect, useState } from 'react';
-import { Mic, Send, StopCircle, Activity, ShieldCheck, Bot, Terminal, User, AlertTriangle, Loader2, MicOff } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { Mic, Send, StopCircle, Activity, ShieldCheck, Bot, Terminal, User, AlertTriangle, Loader2, MicOff, ImageIcon, X } from 'lucide-react';
 
 // --- AUDIO UTILS (Inline for simplicity) ---
 function floatTo16BitPCM(float32Array) {
@@ -74,13 +75,16 @@ const ChatInterface = ({
   onToggleVoiceMode,
   onStartVoiceRecording,
   onStopVoiceRecording,
+  onImageUpload,
   isTyping, 
   agentStatus,
   isVoiceMode,
-  isVoiceRecording
+  isVoiceRecording,
+  uploadedImage
 }) => {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = (behavior = "smooth") => {
     if (messagesEndRef.current) {
@@ -94,10 +98,22 @@ const ChatInterface = ({
 
   const handleSend = (e) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || isTyping) return;
+    if ((!inputText.trim() && !uploadedImage) || isTyping) return;
     
-    onSendMessage(inputText);
+    onSendMessage(inputText, uploadedImage);
     setInputText('');
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target.result.split(',')[1]; // Remove data URL prefix
+        onImageUpload(base64);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const getModeDisplay = () => {
@@ -207,28 +223,74 @@ const ChatInterface = ({
                     </div>
                   )}
 
-                  <div className={`p-4 rounded-2xl shadow-lg backdrop-blur-sm text-sm sm:text-base leading-relaxed whitespace-pre-wrap ${
+                  <div className={`p-4 rounded-2xl shadow-lg backdrop-blur-sm text-sm sm:text-base leading-relaxed ${ 
                     msg.sender === 'user'
                       ? 'bg-[#7C3AED] text-white rounded-br-none'
                       : 'bg-[#1A1A1A] border border-white/10 text-gray-200 rounded-bl-none'
                   }`}>
-                    {msg.text}
+                    {/* Main message content */}
+                    <div className="whitespace-pre-wrap" style={{ wordBreak: 'break-word' }}>
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    </div>
+                    
+                    {/* Image display for user messages */}
+                    {msg.image && (
+                      <div className="mt-3">
+                        <img 
+                          src={`data:image/jpeg;base64,${msg.image}`} 
+                          alt="User uploaded" 
+                          className="max-w-sm rounded-lg border border-white/10"
+                        />
+                      </div>
+                    )}
 
-                    {msg.sender !== 'user' && msg.metadata?.sources && msg.metadata.sources.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-                          <ShieldCheck size={12} /> Sources:
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {msg.metadata.sources.map((src, i) => (
+                    {/* Verdict badge */}
+                    {msg.metadata?.verdict && (
+                      <div className="flex items-center gap-2 mt-3">
+                        <span 
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            msg.metadata.verdict === 'REAL' ? 'bg-green-500/20 text-green-400' :
+                            msg.metadata.verdict === 'FAKE' ? 'bg-red-500/20 text-red-400' :
+                            'bg-yellow-500/20 text-yellow-400'
+                          }`}
+                        >
+                          {msg.metadata.verdict}
+                        </span>
+                        {msg.metadata.confidence && (
+                          <span className="text-xs text-gray-400">
+                            {Math.round(msg.metadata.confidence * 100)}% confidence
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Sources section - ALWAYS show for bot messages with sources */}
+                    {msg.sender === 'bot' && msg.metadata?.sources && msg.metadata.sources.length > 0 && (
+                      <div className="mt-4 p-3 bg-black/20 rounded-lg border border-white/5">
+                        <div className="flex items-center gap-2 mb-3">
+                          <ShieldCheck size={16} className="text-blue-400" />
+                          <span className="text-sm font-medium text-blue-400">Verified Sources</span>
+                        </div>
+                        <div className="space-y-2">
+                          {msg.metadata.sources.slice(0, 6).map((source, idx) => (
                             <a
-                              key={i}
-                              href={src.uri}
+                              key={idx}
+                              href={source.uri}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-black/40 px-2 py-1.5 rounded-md border border-white/5 text-[10px] text-blue-400 hover:text-blue-300 hover:border-blue-500/30 transition-all truncate max-w-[200px]"
+                              className="flex items-start gap-3 p-2 bg-white/5 rounded hover:bg-white/10 transition-colors group"
                             >
-                              {src.title || src.uri}
+                              <div className="text-blue-300 text-xs mt-1 font-mono">
+                                [{idx + 1}]
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm text-blue-300 group-hover:text-blue-200 font-medium line-clamp-2">
+                                  {source.title}
+                                </div>
+                                <div className="text-xs text-gray-500 truncate mt-1">
+                                  {new URL(source.uri).hostname}
+                                </div>
+                              </div>
                             </a>
                           ))}
                         </div>
@@ -254,6 +316,26 @@ const ChatInterface = ({
 
       {/* Input Area */}
       <div className="flex-none bg-[#050505]/90 backdrop-blur-xl border-t border-white/10 p-3 sm:p-5 z-40">
+        {/* Image Preview */}
+        {uploadedImage && (
+          <div className="mb-3 flex items-center gap-2 p-2 bg-[#1A1A1A] border border-white/10 rounded-xl">
+            <img 
+              src={`data:image/jpeg;base64,${uploadedImage}`} 
+              alt="Uploaded" 
+              className="w-16 h-16 object-cover rounded-lg"
+            />
+            <div className="flex-1">
+              <p className="text-sm text-gray-300">📸 Image attached for analysis</p>
+            </div>
+            <button 
+              onClick={() => onImageUpload(null)}
+              className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSend} className="max-w-4xl mx-auto relative flex items-center gap-2 sm:gap-4">
           
           {/* Text Mode: Mic button for voice recording OR Voice Mode: Toggle button */}
@@ -294,12 +376,42 @@ const ChatInterface = ({
             </button>
           )}
 
+          {/* Image Upload Button (only in text mode) */}
+          {!isVoiceMode && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isTyping} 
+                className={`
+                  relative p-3 sm:p-4 rounded-xl shadow-lg transition-all active:scale-95 border
+                  ${uploadedImage 
+                    ? 'bg-purple-500/10 text-purple-400 border-purple-500/50' 
+                    : 'bg-gray-500/10 text-gray-400 border-gray-500/50 hover:bg-gray-500/20 hover:text-white'
+                  }
+                  ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+                title="Upload image for fact-checking"
+              >
+                <ImageIcon size={20} />
+              </button>
+            </>
+          )}
+
           <div className="flex-1 relative">
             <input 
               type="text" 
               className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-sm text-white focus:outline-none focus:border-[#7C3AED]/50 transition-all placeholder-gray-600" 
               placeholder={
                 isVoiceMode ? "Voice mode active - speak to interact..." : 
+                uploadedImage ? "Ask about the uploaded image or leave blank to analyze..." :
                 "Type a claim to verify or hold mic to record..."
               } 
               value={inputText} 
@@ -310,7 +422,7 @@ const ChatInterface = ({
 
           <button 
             type="submit" 
-            disabled={!inputText.trim() || isTyping || isVoiceMode} 
+            disabled={(!inputText.trim() && !uploadedImage) || isTyping || isVoiceMode} 
             className="p-3 sm:p-4 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-xl shadow-lg disabled:opacity-50 transition-all active:scale-95"
           >
             <Send size={20} />
@@ -336,6 +448,7 @@ export default function Main() {
   const [isVoiceMode, setIsVoiceMode] = useState(false); // Voice mode (live session)
   const [isVoiceRecording, setIsVoiceRecording] = useState(false); // Voice recording state for mic in text mode
   const [agentStatus, setAgentStatus] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
 
   // Voice recording refs
   const mediaRecorderRef = useRef(null);
@@ -351,121 +464,209 @@ export default function Main() {
   const API_BASE_URL = 'http://localhost:8000';
 
   // --- TEXT MODE: Complete Agent Workflow ---
-  const handleSendMessage = async (text) => {
-    const userMsg = { id: Date.now(), sender: 'user', text, timestamp: new Date() };
+  const handleSendMessage = async (text, imageData = null) => {
+    const userMsg = { 
+      id: Date.now(), 
+      sender: 'user', 
+      text, 
+      timestamp: new Date(),
+      image: imageData // Add image data if present
+    };
     setMessages(prev => [...prev, userMsg]);
     setIsTyping(true);
     setAgentStatus("🧠 Main Agent routing...");
 
     try {
-        // STEP 1: Main Agent decides what to do
-        const mainRes = await fetch(`${API_BASE_URL}/api/main-agent`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userText: text })
-        });
-        
-        if (!mainRes.ok) throw new Error('Main agent failed');
-        const plan = await mainRes.json();
-
         let responseText = '';
 
-        if (plan.action === "DELEGATE_TO_CHECKER") {
-            setAgentStatus("🔍 Check Agent verifying...");
+        if (imageData) {
+          // STEP 1: Process image first
+          setAgentStatus("🖼️ Image Agent processing...");
+          
+          const imageRes = await fetch(`${API_BASE_URL}/api/process-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              base64Image: imageData, 
+              userMessage: text 
+            })
+          });
+          
+          if (!imageRes.ok) throw new Error('Image processing failed');
+          const imageResult = await imageRes.json();
+          
+          // Add image agent communication
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            sender: 'agent-to-agent',
+            text: `Image Agent → Check Agent: "${imageResult.combined_query}"`,
+            timestamp: new Date()
+          }]);
 
-            // Add agent communication message
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              sender: 'agent-to-agent',
-              text: `Main Agent → Check Agent: "${plan.checker_query}"`,
-              timestamp: new Date()
-            }]);
+          // STEP 2: Send extracted content to Check Agent
+          setAgentStatus("🔍 Check Agent verifying image content...");
+          
+          const checkRes = await fetch(`${API_BASE_URL}/api/check-agent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: imageResult.combined_query })
+          });
+          
+          if (!checkRes.ok) throw new Error('Check agent failed');
+          const checkResult = await checkRes.json();
 
-            // STEP 2: Check Agent verification
-            const checkRes = await fetch(`${API_BASE_URL}/api/check-agent`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: plan.checker_query })
-            });
-            
-            if (!checkRes.ok) throw new Error('Check agent failed');
-            const checkResult = await checkRes.json();
+          // STEP 3: Synthesis
+          setAgentStatus("✨ Synthesizing image analysis...");
+          const synthRes = await fetch(`${API_BASE_URL}/api/synthesis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              userQuery: `Image analysis: ${text || 'Verify content in uploaded image'}`, 
+              checkResult: checkResult 
+            })
+          });
+          
+          if (!synthRes.ok) throw new Error('Synthesis failed');
+          const synthData = await synthRes.json();
 
-            // STEP 3: Synthesis
-            setAgentStatus("✨ Synthesizing response...");
-            const synthRes = await fetch(`${API_BASE_URL}/api/synthesis`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    userQuery: text, 
-                    checkResult: checkResult 
-                })
-            });
-            
-            if (!synthRes.ok) throw new Error('Synthesis failed');
-            const synthData = await synthRes.json();
+          responseText = `📸 Image Analysis Complete\n\n🔍 Extracted Content: ${imageResult.extracted_content}\n\n${synthData.text}`;
 
-            responseText = synthData.text;
-
-            setMessages(prev => [...prev, { 
-                id: Date.now(), 
-                sender: 'bot', 
-                text: responseText, 
-                timestamp: new Date(), 
-                agentUsed: 'CHECKER', 
-                metadata: { 
-                    verdict: checkResult.verdict, 
-                    confidence: checkResult.confidence, 
-                    sources: checkResult.sources 
-                } 
-            }]);
-
-        } else if (plan.action === "SCAN_CRISIS") {
-            setAgentStatus("📡 Crisis Scanner deploying...");
-            
-            setMessages(prev => [...prev, { 
-                id: Date.now(), 
-                sender: 'agent-to-agent', 
-                text: `Main Agent → Crisis Scanner: Monitoring "${plan.scan_topic}"`, 
-                timestamp: new Date() 
-            }]);
-
-            // Crisis Scanner
-            const scanRes = await fetch(`${API_BASE_URL}/api/scan-crisis`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic: plan.scan_topic })
-            });
-            
-            if (!scanRes.ok) throw new Error('Scanner failed');
-            const trends = await scanRes.json();
-
-            // Format results
-            responseText = `📊 Crisis Scan Complete: ${trends.length} trending claims found\n\n`;
-            trends.forEach((t, idx) => {
-                const icon = t.verdict === 'FAKE' ? '❌' : t.verdict === 'REAL' ? '✅' : '⚠️';
-                responseText += `${idx + 1}. ${icon} [${t.verdict}] ${t.claim}\n   Severity: ${t.severity} | Volume: ${t.volume} mentions\n\n`;
-            });
-
-            setMessages(prev => [...prev, { 
-                id: Date.now(), 
-                sender: 'bot', 
-                text: responseText, 
-                timestamp: new Date(), 
-                agentUsed: 'SWARM', 
-                metadata: { trends } 
-            }]);
+          setMessages(prev => [...prev, { 
+            id: Date.now(), 
+            sender: 'bot', 
+            text: responseText, 
+            timestamp: new Date(), 
+            agentUsed: 'IMAGE_CHECKER', 
+            metadata: { 
+              verdict: checkResult.verdict, 
+              confidence: checkResult.confidence, 
+              sources: checkResult.sources,
+              extracted_content: imageResult.extracted_content
+            } 
+          }]);
 
         } else {
-            // Direct reply
-            responseText = plan.reply_text || "I'm ready to help verify information.";
-            setMessages(prev => [...prev, { 
-                id: Date.now(), 
-                sender: 'bot', 
-                text: responseText, 
-                timestamp: new Date(), 
-                agentUsed: 'ORCHESTRATOR' 
-            }]);
+          // Regular text processing (existing logic)
+          // STEP 1: Main Agent decides what to do
+          const mainRes = await fetch(`${API_BASE_URL}/api/main-agent`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userText: text })
+          });
+          
+          if (!mainRes.ok) throw new Error('Main agent failed');
+          const plan = await mainRes.json();
+
+          if (plan.action === "DELEGATE_TO_CHECKER") {
+              setAgentStatus("🔍 Check Agent verifying...");
+
+              // Add agent communication message
+              setMessages(prev => [...prev, {
+                id: Date.now(),
+                sender: 'agent-to-agent',
+                text: `Main Agent → Check Agent: "${plan.checker_query}"`,
+                timestamp: new Date()
+              }]);
+
+              // STEP 2: Check Agent verification
+              const checkRes = await fetch(`${API_BASE_URL}/api/check-agent`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ query: plan.checker_query })
+              });
+              
+              if (!checkRes.ok) throw new Error('Check agent failed');
+              const checkResult = await checkRes.json();
+
+              // STEP 3: Synthesis
+              setAgentStatus("✨ Synthesizing response...");
+              const synthRes = await fetch(`${API_BASE_URL}/api/synthesis`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                      userQuery: text, 
+                      checkResult: checkResult 
+                  })
+              });
+              
+              if (!synthRes.ok) throw new Error('Synthesis failed');
+              const synthData = await synthRes.json();
+
+              responseText = synthData.text;
+
+              setMessages(prev => [...prev, { 
+                  id: Date.now(), 
+                  sender: 'bot', 
+                  text: responseText, 
+                  timestamp: new Date(), 
+                  agentUsed: 'CHECKER', 
+                  metadata: { 
+                      verdict: checkResult.verdict, 
+                      confidence: checkResult.confidence, 
+                      sources: checkResult.sources 
+                  } 
+              }]);
+
+          } else if (plan.action === "SCAN_CRISIS") {
+              setAgentStatus("📡 Crisis Scanner deploying...");
+              
+              setMessages(prev => [...prev, { 
+                  id: Date.now(), 
+                  sender: 'agent-to-agent', 
+                  text: `Main Agent → Crisis Scanner: Monitoring "${plan.scan_topic}"`, 
+                  timestamp: new Date() 
+              }]);
+
+              // Crisis Scanner
+              const scanRes = await fetch(`${API_BASE_URL}/api/scan-crisis`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ topic: plan.scan_topic })
+              });
+              
+              if (!scanRes.ok) throw new Error('Scanner failed');
+              const trends = await scanRes.json();
+
+              // Format results with detailed information and sources
+              responseText = `📊 Crisis Scan Complete: ${trends.length} trending claims found\n\n`;
+              
+              trends.forEach((t, idx) => {
+                  const icon = t.verdict === 'FAKE' ? '❌' : t.verdict === 'REAL' ? '✅' : '⚠️';
+                  responseText += `${idx + 1}. ${icon} [${t.verdict}] ${t.claim}\n`;
+                  responseText += `   📈 Severity: ${t.severity} | Volume: ${t.volume} mentions\n`;
+                  if (t.confidence) {
+                      responseText += `   🎯 Confidence: ${(t.confidence * 100).toFixed(1)}%\n`;
+                  }
+                  if (t.explanation) {
+                      responseText += `   📝 ${t.explanation.substring(0, 200)}...\n`;
+                  }
+                  responseText += '\n';
+              });
+
+              setMessages(prev => [...prev, { 
+                  id: Date.now(), 
+                  sender: 'bot', 
+                  text: responseText, 
+                  timestamp: new Date(), 
+                  agentUsed: 'SWARM', 
+                  metadata: { 
+                      trends: trends,
+                      // Collect all sources from all trends
+                      sources: trends.flatMap(t => t.sources || []).slice(0, 10)
+                  } 
+              }]);
+
+          } else {
+              // Direct reply
+              responseText = plan.reply_text || "I'm ready to help verify information.";
+              setMessages(prev => [...prev, { 
+                  id: Date.now(), 
+                  sender: 'bot', 
+                  text: responseText, 
+                  timestamp: new Date(), 
+                  agentUsed: 'ORCHESTRATOR' 
+              }]);
+          }
         }
 
         return responseText;
@@ -484,6 +685,7 @@ export default function Main() {
     } finally {
         setIsTyping(false);
         setAgentStatus(null);
+        setUploadedImage(null); // Clear uploaded image after processing
     }
   };
 
@@ -580,6 +782,11 @@ export default function Main() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
+  };
+
+  // --- IMAGE UPLOAD HANDLING ---
+  const handleImageUpload = (base64Image) => {
+    setUploadedImage(base64Image);
   };
 
   // --- VOICE MODE (Live Session) ---
@@ -828,10 +1035,12 @@ export default function Main() {
         onToggleVoiceMode={handleToggleVoiceMode}
         onStartVoiceRecording={handleStartVoiceRecording}
         onStopVoiceRecording={handleStopVoiceRecording}
+        onImageUpload={handleImageUpload}
         isTyping={isTyping}
         agentStatus={agentStatus}
         isVoiceMode={isVoiceMode}
         isVoiceRecording={isVoiceRecording}
+        uploadedImage={uploadedImage}
       />
     </div>
   );
