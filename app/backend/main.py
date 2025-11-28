@@ -1,36 +1,29 @@
-# main.py - FIXED LIVE VOICE AGENT WEBSOCKET
-
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Literal, Any, Dict
 import os
 import json
-import re
-from datetime import datetime
 import random
-import string
 import asyncio
+from typing import Dict, List, Any, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-import base64
+import websockets
 
 # Load environment variables from .env file
 load_dotenv()
+# Initialize API key  
+API_KEY = os.getenv("GOOGLE_API_KEY") 
+if not API_KEY:
+    raise ValueError("GOOGLE_API_KEY must be set")
 
-# Environment variable
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY environment variable must be set")
+print(f"✅ API Key loaded: {API_KEY[:10]}...")
 
-# Initialize Google GenAI client
-client = genai.Client(api_key=GOOGLE_API_KEY)
+ai = genai.Client(api_key=API_KEY)
 
 app = FastAPI()
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,40 +32,212 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- PYDANTIC MODELS ---
-class Source(BaseModel):
-    title: str
-    uri: str
+# Define the tool for the Live API
+LIVE_AGENT_TOOLS = [
+    {
+        "function_declarations": [
+            {
+                "name": "verify_fact",
+                "description": "Verify a claim, news, or fact using the Check Agent. Use this for ANY objective question regarding reality, news, weather, or data.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The specific claim or fact to check."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
+    }
+]
 
-class CheckAgentResponse(BaseModel):
-    verdict: Literal['REAL', 'FAKE', 'UNCERTAIN']
-    confidence: float
-    explanation: str
-    sources: List[Source]
+CHECKER_TOOLS = [
+    {"google_search": {}}
+]
 
-class OrchestratorResponse(BaseModel):
-    action: Literal['DIRECT_REPLY', 'DELEGATE_TO_CHECKER', 'SCAN_CRISIS']
-    reasoning: str
-    reply_text: Optional[str] = None
-    checker_query: Optional[str] = None
-    scan_topic: Optional[str] = None
+# --- AGENT 0: TRANSCRIBER ---
+async def transcribe_audio(base64_audio: str, mime_type: str = "audio/webm") -> str:
+    try:
+        clean_mime = mime_type.split(';')[0].strip()
+        if not clean_mime:
+            clean_mime = 'audio/webm'
+        
+        response = ai.models.generate_content(
+            model="gemini-2.5-flash",
+            contents={
+                "parts": [
+                    {"inline_data": {"mime_type": clean_mime, "data": base64_audio}},
+                    {"text": "Listen to this audio. Output ONLY the verbatim spoken text. Do not reply to the speaker. If silence, output nothing."}
+                ]
+            },
+            config={"temperature": 0.0}
+        )
+        
+        return response.text or ""
+    except Exception as error:
+        print(f"Transcription Error: {error}")
+        return ""
 
-class CrisisTrend(BaseModel):
-    id: str
-    topic: str
-    claim: str
-    severity: Literal['HIGH', 'MEDIUM', 'LOW']
-    verdict: Literal['REAL', 'FAKE', 'UNCERTAIN']
-    volume: int
-    timestamp: datetime
+# --- AGENT 1: MAIN AGENT ---
+orchestrator_schema = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ['DIRECT_REPLY', 'DELEGATE_TO_CHECKER', 'SCAN_CRISIS'],
+            "description": "Use DELEGATE for specific checks. Use SCAN_CRISIS if user asks to 'scan', 'monitor', 'find trends', or 'check news' about a broad topic."
+        },
+        "reasoning": {"type": "string", "description": "Internal thought process."},
+        "reply_text": {"type": "string", "description": "Response if DIRECT_REPLY."},
+        "checker_query": {"type": "string", "description": "Optimized search query for the Check Agent."},
+        "scan_topic": {"type": "string", "description": "The broad topic to scan for emerging misinformation."}
+    },
+    "required": ['action', 'reasoning']
+}
 
-# Request models
+async def run_main_agent(user_text: str) -> Dict[str, Any]:
+    try:
+        response = ai.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=user_text,
+            config={
+                "system_instruction": "You are the Main Agent. Route queries. If factual/news/weather, DELEGATE_TO_CHECKER. If user asks to scan, monitor, or find latest rumors, use SCAN_CRISIS.",
+                "response_mime_type": "application/json",
+                "response_schema": orchestrator_schema,
+                "temperature": 0.3
+            }
+        )
+        
+        text = response.text
+        if not text:
+            raise Exception("No response")
+        
+        return json.loads(text)
+    except Exception as error:
+        print(f"Main Agent Error: {error}")
+        return {"action": "DIRECT_REPLY", "reasoning": "Error", "reply_text": "System error."}
+
+# --- AGENT 2: CHECK AGENT ---
+async def run_check_agent(query: str) -> Dict[str, Any]:
+    try:
+        response = ai.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f'Fact check: "{query}". Format: VERDICT: [REAL/FAKE/UNCERTAIN], CONFIDENCE: [0.0-1.0], EXPLANATION: [...]',
+            config={
+                "tools": CHECKER_TOOLS,
+                "temperature": 0.1
+            }
+        )
+        
+        grounding_chunks = []
+        if response.candidates and len(response.candidates) > 0:
+            if response.candidates[0].grounding_metadata:
+                grounding_chunks = response.candidates[0].grounding_metadata.grounding_chunks or []
+        
+        sources = []
+        for chunk in grounding_chunks:
+            if chunk.web:
+                sources.append({"title": chunk.web.title, "uri": chunk.web.uri})
+        
+        text = response.text or ""
+        
+        verdict = 'UNCERTAIN'
+        confidence = 0.5
+        
+        # Parse verdict
+        import re
+        verdict_match = re.search(r'VERDICT:\s*(REAL|FAKE|UNCERTAIN)', text, re.IGNORECASE)
+        if verdict_match:
+            verdict = verdict_match.group(1).upper()
+        
+        # Parse confidence
+        confidence_match = re.search(r'CONFIDENCE:\s*([0-9]*\.?[0-9]+)', text, re.IGNORECASE)
+        if confidence_match:
+            confidence = float(confidence_match.group(1))
+        
+        # Extract explanation
+        explanation = re.sub(r'VERDICT:.*(\n|$)', '', text, flags=re.IGNORECASE)
+        explanation = re.sub(r'CONFIDENCE:.*(\n|$)', '', explanation, flags=re.IGNORECASE)
+        explanation = explanation.strip()
+        
+        return {
+            "verdict": verdict,
+            "confidence": confidence,
+            "explanation": explanation,
+            "sources": sources[:5]
+        }
+    except Exception as error:
+        print(f"Check Agent Error: {error}")
+        return {
+            "verdict": "UNCERTAIN",
+            "confidence": 0,
+            "explanation": "Tool access failed.",
+            "sources": []
+        }
+
+# --- AGENT 3: CRISIS SCANNER ---
+async def scan_crisis_trends(topic: str) -> List[Dict[str, Any]]:
+    try:
+        scan_response = ai.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f'Find the top 3 trending rumors, news headlines, or viral claims currently circulating about: "{topic}". Return ONLY a JSON array of strings, no markdown.',
+            config={
+                "tools": CHECKER_TOOLS
+            }
+        )
+        
+        claims = []
+        try:
+            clean_text = scan_response.text or "[]"
+            clean_text = clean_text.replace('```json', '').replace('```', '').strip()
+            claims = json.loads(clean_text)
+        except Exception as e:
+            print(f"Parse error: {e}")
+        
+        if len(claims) == 0:
+            return []
+        
+        async def check_claim(claim):
+            check = await run_check_agent(claim)
+            return {
+                "id": ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=9)),
+                "topic": topic,
+                "claim": claim,
+                "severity": 'HIGH' if check["verdict"] == 'FAKE' else 'MEDIUM',
+                "verdict": check["verdict"],
+                "volume": random.randint(500, 1500),
+                "timestamp": None
+            }
+        
+        check_promises = [check_claim(claim) for claim in claims]
+        return await asyncio.gather(*check_promises)
+        
+    except Exception as error:
+        print(f"Scanner Error: {error}")
+        return []
+
+# --- SYNTHESIS ---
+async def run_main_agent_synthesis(user_query: str, check_result: Dict[str, Any]) -> str:
+    try:
+        response = ai.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f'Synthesize response for "{user_query}" based on: Verdict {check_result["verdict"]}, Explanation: {check_result["explanation"]}',
+            config={"temperature": 0.6}
+        )
+        return response.text or "Verified."
+    except Exception as e:
+        print(f"Synthesis Error: {e}")
+        return "Error synthesizing."
+
+# ==================== FASTAPI ROUTES ====================
+
+# Pydantic models for request/response
 class TranscribeRequest(BaseModel):
     base64Audio: str
     mimeType: str = "audio/webm"
-
-class TTSRequest(BaseModel):
-    text: str
 
 class MainAgentRequest(BaseModel):
     userText: str
@@ -85,450 +250,224 @@ class ScanCrisisRequest(BaseModel):
 
 class SynthesisRequest(BaseModel):
     userQuery: str
-    checkResult: CheckAgentResponse
+    checkResult: Dict[str, Any]
 
-# --- TOOLS DEFINITION ---
-LIVE_AGENT_TOOLS = [
-    types.Tool(
-        function_declarations=[
-            types.FunctionDeclaration(
-                name="verify_fact",
-                description="Verify a claim, news, or fact using the Check Agent. Use this for ANY objective question regarding reality, news, weather, or data.",
-                parameters=types.Schema(
-                    type=types.Type.OBJECT,
-                    properties={
-                        "query": types.Schema(
-                            type=types.Type.STRING,
-                            description="The specific claim or fact to check."
-                        )
-                    },
-                    required=["query"]
-                )
-            )
-        ]
-    )
-]
-
-CHECKER_TOOLS = [types.Tool(google_search=types.GoogleSearch())]
-
-# --- AGENT 0: TRANSCRIBER ---
+# REST Endpoints
 @app.post("/api/transcribe")
-async def transcribe_audio(request: TranscribeRequest):
-    try:
-        clean_mime = request.mimeType.split(';')[0].strip()
-        if not clean_mime:
-            clean_mime = 'audio/webm'
+async def api_transcribe(request: TranscribeRequest):
+    text = await transcribe_audio(request.base64Audio, request.mimeType)
+    return {"text": text}
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=types.Content(
-                parts=[
-                    types.Part(
-                        inline_data=types.Blob(
-                            mime_type=clean_mime,
-                            data=request.base64Audio
-                        )
-                    ),
-                    types.Part(
-                        text="Listen to this audio. Output ONLY the verbatim spoken text. Do not reply to the speaker. If silence, output nothing."
-                    )
-                ]
-            ),
-            config=types.GenerateContentConfig(temperature=0.0)
-        )
-        
-        return {"text": response.text or ""}
-    except Exception as error:
-        print(f"Transcription Error: {error}")
-        return {"text": ""}
+@app.post("/api/main-agent")
+async def api_main_agent(request: MainAgentRequest):
+    result = await run_main_agent(request.userText)
+    return result
 
-# --- AGENT 0.5: TTS ---
-@app.post("/api/tts")
-async def generate_speech(request: TTSRequest):
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=types.Content(parts=[types.Part(text=request.text)]),
-            config=types.GenerateContentConfig(
-                response_modalities=[types.Modality.AUDIO],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name='Kore'
-                        )
-                    )
-                )
-            )
-        )
+@app.post("/api/check-agent")
+async def api_check_agent(request: CheckAgentRequest):
+    result = await run_check_agent(request.query)
+    return result
 
-        base64_audio = None
-        if response.candidates and len(response.candidates) > 0:
-            candidate = response.candidates[0]
-            if candidate.content and candidate.content.parts:
-                for part in candidate.content.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data:
-                        base64_audio = part.inline_data.data
-                        break
+@app.post("/api/scan-crisis")
+async def api_scan_crisis(request: ScanCrisisRequest):
+    result = await scan_crisis_trends(request.topic)
+    return result
 
-        return {"audio": base64_audio}
-    except Exception as error:
-        print(f"TTS Error: {error}")
-        return {"audio": None}
-
-# --- AGENT 1: MAIN AGENT ---
-orchestrator_schema = types.Schema(
-    type=types.Type.OBJECT,
-    properties={
-        "action": types.Schema(
-            type=types.Type.STRING,
-            enum=['DIRECT_REPLY', 'DELEGATE_TO_CHECKER', 'SCAN_CRISIS'],
-            description="Use DELEGATE for specific checks. Use SCAN_CRISIS if user asks to 'scan', 'monitor', 'find trends', or 'check news' about a broad topic."
-        ),
-        "reasoning": types.Schema(
-            type=types.Type.STRING,
-            description="Internal thought process."
-        ),
-        "reply_text": types.Schema(
-            type=types.Type.STRING,
-            description="Response if DIRECT_REPLY."
-        ),
-        "checker_query": types.Schema(
-            type=types.Type.STRING,
-            description="Optimized search query for the Check Agent."
-        ),
-        "scan_topic": types.Schema(
-            type=types.Type.STRING,
-            description="The broad topic to scan for emerging misinformation."
-        )
-    },
-    required=['action', 'reasoning']
-)
-
-@app.post("/api/main-agent", response_model=OrchestratorResponse)
-async def run_main_agent(request: MainAgentRequest):
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=request.userText,
-            config=types.GenerateContentConfig(
-                system_instruction="You are the Main Agent. Route queries. If factual/news/weather, DELEGATE_TO_CHECKER. If user asks to scan, monitor, or find latest rumors, use SCAN_CRISIS.",
-                response_mime_type="application/json",
-                response_schema=orchestrator_schema,
-                temperature=0.3
-            )
-        )
-        
-        text = response.text
-        if not text:
-            raise Exception("No response")
-        
-        return json.loads(text)
-    except Exception as error:
-        print(f"Main Agent Error: {error}")
-        return OrchestratorResponse(
-            action='DIRECT_REPLY',
-            reasoning='Error',
-            reply_text="System error."
-        )
-
-# --- AGENT 2: CHECK AGENT ---
-@app.post("/api/check-agent", response_model=CheckAgentResponse)
-async def run_check_agent(request: CheckAgentRequest):
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f'Fact check: "{request.query}". Format: VERDICT: [REAL/FAKE/UNCERTAIN], CONFIDENCE: [0.0-1.0], EXPLANATION: [...]',
-            config=types.GenerateContentConfig(
-                tools=CHECKER_TOOLS,
-                temperature=0.1
-            )
-        )
-
-        grounding_chunks = []
-        if response.candidates and len(response.candidates) > 0:
-            candidate = response.candidates[0]
-            if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
-                grounding_chunks = candidate.grounding_metadata.grounding_chunks or []
-
-        sources = []
-        for chunk in grounding_chunks:
-            if hasattr(chunk, 'web') and chunk.web:
-                sources.append(Source(
-                    title=chunk.web.title,
-                    uri=chunk.web.uri
-                ))
-
-        text = response.text or ""
-        
-        verdict = 'UNCERTAIN'
-        confidence = 0.5
-
-        verdict_match = re.search(r'VERDICT:\s*(REAL|FAKE|UNCERTAIN)', text, re.IGNORECASE)
-        if verdict_match:
-            verdict = verdict_match.group(1).upper()
-
-        confidence_match = re.search(r'CONFIDENCE:\s*([0-9]*\.?[0-9]+)', text, re.IGNORECASE)
-        if confidence_match:
-            confidence = float(confidence_match.group(1))
-
-        explanation = re.sub(r'VERDICT:.*(\n|$)', '', text, flags=re.IGNORECASE)
-        explanation = re.sub(r'CONFIDENCE:.*(\n|$)', '', explanation, flags=re.IGNORECASE)
-        explanation = explanation.strip()
-
-        return CheckAgentResponse(
-            verdict=verdict,
-            confidence=confidence,
-            explanation=explanation,
-            sources=sources[:5]
-        )
-    except Exception as error:
-        print(f"Check Agent Error: {error}")
-        return CheckAgentResponse(
-            verdict='UNCERTAIN',
-            confidence=0.0,
-            explanation="Tool access failed.",
-            sources=[]
-        )
-
-# --- AGENT 3: CRISIS SCANNER ---
-@app.post("/api/scan-crisis", response_model=List[CrisisTrend])
-async def scan_crisis_trends(request: ScanCrisisRequest):
-    try:
-        scan_response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f'Find the top 3 trending rumors, news headlines, or viral claims currently circulating about: "{request.topic}". Return ONLY a JSON array of strings, no markdown.',
-            config=types.GenerateContentConfig(
-                tools=CHECKER_TOOLS
-            )
-        )
-        
-        claims = []
-        try:
-            clean_text = scan_response.text or "[]"
-            clean_text = clean_text.replace('```json', '').replace('```', '').strip()
-            claims = json.loads(clean_text)
-        except Exception as e:
-            print(f"Parse error: {e}")
-
-        if len(claims) == 0:
-            return []
-
-        async def check_claim(claim: str) -> CrisisTrend:
-            check = await run_check_agent(CheckAgentRequest(query=claim))
-            return CrisisTrend(
-                id=''.join(random.choices(string.ascii_lowercase + string.digits, k=9)),
-                topic=request.topic,
-                claim=claim,
-                severity='HIGH' if check.verdict == 'FAKE' else 'MEDIUM',
-                verdict=check.verdict,
-                volume=random.randint(500, 1500),
-                timestamp=datetime.now()
-            )
-
-        results = await asyncio.gather(*[check_claim(claim) for claim in claims])
-        return list(results)
-
-    except Exception as error:
-        print(f"Scanner Error: {error}")
-        return []
-
-# --- SYNTHESIS ENDPOINT ---
 @app.post("/api/synthesis")
-async def run_main_agent_synthesis(request: SynthesisRequest):
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f'Synthesize response for "{request.userQuery}" based on: Verdict {request.checkResult.verdict}, Explanation: {request.checkResult.explanation}',
-            config=types.GenerateContentConfig(temperature=0.6)
-        )
-        return {"text": response.text or "Verified."}
-    except Exception as e:
-        print(f"Synthesis Error: {e}")
-        return {"text": "Error synthesizing."}
+async def api_synthesis(request: SynthesisRequest):
+    text = await run_main_agent_synthesis(request.userQuery, request.checkResult)
+    return {"text": text}
 
-# --- FIXED LIVE VOICE AGENT (WebSocket) ---
+# WebSocket for Live Voice - CLEAN VERSION
 @app.websocket("/ws/live-session")
-async def create_live_session(websocket: WebSocket):
-    """
-    FIXED: Live Voice Agent with positional arguments for SDK calls
-    """
+async def websocket_live_session(websocket: WebSocket):
     await websocket.accept()
-    print("🎤 WebSocket connection accepted")
-    
-    session_cm = None
+    print("🎤 VOICE: Connected")
     
     try:
-        # Create live session
-        session_cm = client.aio.live.connect(
-            model='gemini-2.5-flash-native-audio-preview-09-2025',
-            config=types.LiveConnectConfig(
-                response_modalities=['AUDIO'],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name="Puck"
-                        )
-                    )
-                ),
-                system_instruction=types.Content(
-                    parts=[types.Part(
-                        text="You are the Voice Main Agent for Veritas, a fact-checking system. You listen to the user and help verify claims. You have access to a tool called 'verify_fact'. If the user asks ANY question about facts, news, weather, or reality, you MUST use 'verify_fact' to check it. Do not answer from your own knowledge about current events. Always use the tool and cite the sources provided. Be concise and friendly."
-                    )]
-                ),
-                tools=LIVE_AGENT_TOOLS
-            )
-        )
+        # Use the correct Gemini Live WebSocket URL 
+        gemini_ws_url = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={API_KEY}"
         
-        print("✅ Gemini Live session created")
-        
-        # Send initial greeting
-        await websocket.send_json({
-            "type": "status",
-            "message": "Connected to Veritas Voice Agent"
-        })
-        
-        async with session_cm as live_session:
-            print(f"🔗 Session type: {type(live_session)}")
+        # Connect directly to Gemini Live WebSocket
+        async with websockets.connect(gemini_ws_url) as gemini_ws:
+            print("🎤 Connected to Gemini Live API")
             
-            # Task to receive from client and forward to Gemini
-            async def receive_from_client():
+            # Send setup message with native audio model
+            setup_message = {
+                "setup": {
+                    "model": "models/gemini-2.5-flash-native-audio-preview-09-2025",
+                    "generationConfig": {
+                        "responseModalities": ["AUDIO"],
+                        "speechConfig": {
+                            "voiceConfig": {
+                                "prebuiltVoiceConfig": {
+                                    "voiceName": "Puck"
+                                }
+                            }
+                        }
+                    },
+                    "systemInstruction": {
+                        "parts": [{
+                            "text": "You are the Voice Main Agent. You listen to the user. You have access to a tool called 'verify_fact'. If the user asks ANY question about facts, news, weather, or reality, you MUST use 'verify_fact' to check it. Do not answer from your own knowledge. Always cite the source provided by the tool. Be concise and conversational."
+                        }]
+                    },
+                    "tools": LIVE_AGENT_TOOLS
+                }
+            }
+            
+            await gemini_ws.send(json.dumps(setup_message))
+            await websocket.send_json({"type": "connected"})
+            
+            # Handle client audio streaming to Gemini
+            async def forward_audio_to_gemini():
                 try:
                     while True:
                         data = await websocket.receive_json()
-                        
                         if data.get("type") == "audio":
-                            # Forward audio to Gemini
-                            audio_data_str = data.get("audio")
-                            if audio_data_str:
-                                # Decode base64 string to bytes
-                                audio_bytes = base64.b64decode(audio_data_str)
-                                
-                                realtime_input = types.LiveClientRealtimeInput(
-                                    media_chunks=[
-                                        types.Part(
-                                            inline_data=types.Blob(
-                                                mime_type="audio/pcm",
-                                                data=audio_bytes
-                                            )
-                                        )
-                                    ]
-                                )
-                                # FIXED: Passed as POSITIONAL argument (no 'input=')
-                                await live_session.send_realtime_input(realtime_input)
-                        
-                        elif data.get("type") == "tool_response":
-                            # Handle tool response from client
-                            call_id = data.get("call_id")
-                            result = data.get("result")
-
-                            if call_id and result:
-                                tool_resp = types.LiveClientToolResponse(
-                                    function_responses=[
-                                        types.FunctionResponse(
-                                            id=call_id,
-                                            name="verify_fact",
-                                            response=result
-                                        )
-                                    ]
-                                )
-                                # FIXED: Passed as POSITIONAL argument (no 'tool_response=')
-                                await live_session.send_tool_response(tool_resp)
-                                print(f"✅ Tool response sent for call: {call_id}")
-
+                            # Convert base64 to proper PCM format and send to Gemini
+                            realtime_input = {
+                                "realtimeInput": {
+                                    "mediaChunks": [{
+                                        "data": data["audio"],
+                                        "mimeType": "audio/pcm;rate=16000"
+                                    }]
+                                }
+                            }
+                            await gemini_ws.send(json.dumps(realtime_input))
+                            
                 except WebSocketDisconnect:
-                    print("🔌 Client disconnected")
-                    raise
-                except asyncio.CancelledError:
-                    print("🔌 Client receive task cancelled")
-                    raise
+                    print("Client WebSocket disconnected")
+                    return
                 except Exception as e:
-                    print(f"❌ Error receiving from client: {e}")
+                    print(f"Audio forwarding error: {e}")
+                    return
             
-            # Task to receive from Gemini and forward to client
-            async def send_to_client():
+            # Handle Gemini responses and forward to client
+            async def process_gemini_responses():
                 try:
-                    async for response in live_session.receive():
-                        # Handle server content (audio response)
-                        if hasattr(response, 'server_content') and response.server_content:
-                            if hasattr(response.server_content, 'model_turn') and response.server_content.model_turn:
-                                for part in response.server_content.model_turn.parts:
-                                    if hasattr(part, 'inline_data') and part.inline_data:
+                    async for message in gemini_ws:
+                        try:
+                            response = json.loads(message)
+                            
+                            # Handle setup complete
+                            if "setupComplete" in response:
+                                print("🎤 Gemini setup complete")
+                                continue
+                            
+                            # Handle server content
+                            if "serverContent" in response:
+                                server_content = response["serverContent"]
+                                
+                                # User transcript from input transcription
+                                if "inputTranscription" in server_content and server_content["inputTranscription"]:
+                                    transcript = server_content["inputTranscription"].get("text", "")
+                                    if transcript:
+                                        print(f"👤 USER: {transcript}")
                                         await websocket.send_json({
-                                            "type": "audio",
-                                            "audio": part.inline_data.data
+                                            "type": "transcript", 
+                                            "role": "user", 
+                                            "text": transcript
                                         })
-                                        print("🔊 Audio sent to client")
-                        
-                        # Handle tool calls
-                        if hasattr(response, 'tool_call') and response.tool_call:
-                            for call in response.tool_call.function_calls:
-                                if call.name == "verify_fact":
-                                    query = call.args.get("query", "")
-                                    print(f"🔍 Tool call: verify_fact('{query}')")
-                                    
-                                    # Execute verify_fact
-                                    try:
-                                        check_result = await run_check_agent(CheckAgentRequest(query=query))
-                                        
-                                        tool_response_data = {
-                                            "verdict": check_result.verdict,
-                                            "confidence": check_result.confidence,
-                                            "explanation": check_result.explanation,
-                                            "sources": [{"title": s.title, "uri": s.uri} for s in check_result.sources]
-                                        }
-                                        
-                                        tool_resp = types.LiveClientToolResponse(
-                                            function_responses=[
-                                                types.FunctionResponse(
-                                                    id=call.id,
-                                                    name="verify_fact",
-                                                    response=tool_response_data
-                                                )
-                                            ]
-                                        )
-                                        # FIXED: Passed as POSITIONAL argument (no 'tool_response=')
-                                        await live_session.send_tool_response(tool_resp)
-                                        
-                                        print(f"✅ Tool response sent: {check_result.verdict}")
-                                        
-                                        # Also notify client
+                                
+                                # Agent audio response
+                                if "modelTurn" in server_content:
+                                    model_turn = server_content["modelTurn"]
+                                    if "parts" in model_turn:
+                                        for part in model_turn["parts"]:
+                                            if "inlineData" in part:
+                                                inline_data = part["inlineData"]
+                                                if inline_data.get("mimeType", "").startswith("audio/pcm"):
+                                                    # Send 24kHz PCM audio back to client
+                                                    await websocket.send_json({
+                                                        "type": "audio",
+                                                        "audio": inline_data["data"]
+                                                    })
+                                
+                                # Agent transcript from output transcription
+                                if "outputTranscription" in server_content and server_content["outputTranscription"]:
+                                    agent_text = server_content["outputTranscription"].get("text", "")
+                                    if agent_text:
+                                        print(f"🤖 AGENT: {agent_text}")
                                         await websocket.send_json({
-                                            "type": "tool_executed",
-                                            "call_id": call.id,
-                                            "query": query,
-                                            "result": tool_response_data
+                                            "type": "transcript", 
+                                            "role": "agent", 
+                                            "text": agent_text
                                         })
-                                    
-                                    except Exception as e:
-                                        print(f"❌ Error executing tool: {e}")
-                
-                except asyncio.CancelledError:
-                    print("🔌 Gemini receive task cancelled")
-                    raise
+                            
+                            # Handle tool calls
+                            if "toolCall" in response:
+                                tool_call = response["toolCall"]
+                                if "functionCalls" in tool_call:
+                                    for fc in tool_call["functionCalls"]:
+                                        if fc["name"] == "verify_fact":
+                                            query = fc["args"].get("query", "")
+                                            print(f"🔍 Voice → Check: '{query}'")
+                                            
+                                            await websocket.send_json({
+                                                "type": "agent_communication",
+                                                "text": f"Voice Agent → Check Agent: \"{query}\""
+                                            })
+                                            
+                                            # Call our check agent
+                                            result = await run_check_agent(query)
+                                            print(f"✅ Check → Voice: {result['verdict']}")
+                                            
+                                            await websocket.send_json({
+                                                "type": "agent_result",
+                                                "verdict": result["verdict"],
+                                                "query": query
+                                            })
+                                            
+                                            # Send tool response back to Gemini
+                                            tool_response = {
+                                                "toolResponse": {
+                                                    "functionResponses": [{
+                                                        "name": fc["name"],
+                                                        "id": fc["id"],
+                                                        "response": {
+                                                            "verdict": result["verdict"],
+                                                            "explanation": result["explanation"][:200],
+                                                            "sources": result["sources"][:2]
+                                                        }
+                                                    }]
+                                                }
+                                            }
+                                            await gemini_ws.send(json.dumps(tool_response))
+                                            
+                        except json.JSONDecodeError as e:
+                            print(f"JSON decode error: {e}")
+                        except Exception as e:
+                            print(f"Response processing error: {e}")
+                            
+                except websockets.exceptions.ConnectionClosed:
+                    print("Gemini WebSocket closed")
+                    return
                 except Exception as e:
-                    print(f"❌ Error sending to client: {e}")
+                    print(f"❌ Gemini response error: {e}")
+                    return
             
-            # Run both tasks concurrently and handle cancellation
-            try:
-                await asyncio.gather(
-                    receive_from_client(),
-                    send_to_client()
-                )
-            except asyncio.CancelledError:
-                print("🛑 Tasks cancelled (Client Disconnect)")
-            except WebSocketDisconnect:
-                print("🛑 WebSocket disconnected")
-            except Exception as e:
-                print(f"🛑 Session error: {e}")
-
-    except WebSocketDisconnect:
-        print("🔌 WebSocket disconnected")
+            # Run both tasks concurrently
+            await asyncio.gather(
+                forward_audio_to_gemini(), 
+                process_gemini_responses(),
+                return_exceptions=True
+            )
+    
     except Exception as e:
-        print(f"❌ WebSocket error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ VOICE Error: {e}")
+        try:
+            await websocket.send_json({
+                "type": "error", 
+                "message": str(e)
+            })
+        except:
+            pass
     finally:
-        print("🛑 Live session closed")
+        print("🔌 VOICE: Closed")
+
+@app.get("/")
+async def root():
+    return {"status": "online", "service": "Agentic Verifier FastAPI", "version": "2.0"}
 
 if __name__ == "__main__":
     import uvicorn
