@@ -33,7 +33,6 @@ async function ensureContentScriptInjected(tabId) {
     await chrome.tabs.sendMessage(tabId, { action: 'ping' });
   } catch (error) {
     // Content script not loaded, inject it
-    console.log('Injecting content script...');
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['content.js']
@@ -48,7 +47,6 @@ async function sendMessageSafely(tabId, message) {
   try {
     await chrome.tabs.sendMessage(tabId, message);
   } catch (error) {
-    console.log('Message send failed, retrying...');
     try {
       // Try to inject content script and retry
       await ensureContentScriptInjected(tabId);
@@ -73,26 +71,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Async
   }
 
-
   if (request.action === 'capture_screenshot') {
-    console.log('Background: Received capture_screenshot request', request.area);
     handleScreenshotCapture(request.area, sender.tab?.id)
-      .then(res => {
-        console.log('Background: Capture complete, sending response', res);
-        sendResponse(res);
-      })
-      .catch(err => {
-        console.error('Background: Capture error', err);
-        sendResponse({ success: false, error: err.message });
-      });
+      .then(res => sendResponse(res))
+      .catch(err => sendResponse({ success: false, error: err.message }));
     return true; // Keep message channel open for async response
   }
 });
 
-// --- CORE AGENTIC FLOW (MATCHING MAIN.JSX) ---
+// --- CORE VERIFICATION FLOW (MATCHING MAIN.PY) ---
 async function runVerificationFlow(text, tabId) {
   try {
-    // STEP 1: Main Agent decides what to do (like main.jsx)
+    // STEP 1: Main Agent (like main.py)
     if (tabId) {
       await sendMessageSafely(tabId, {
         action: 'status_update',
@@ -101,37 +91,41 @@ async function runVerificationFlow(text, tabId) {
       });
     }
 
-    console.log("🚀 Calling Main Agent...");
     const mainResponse = await fetch(`${API_BASE}/main-agent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userText: text })
     });
 
-    if (!mainResponse.ok) throw new Error('Main Agent failed');
+    if (!mainResponse.ok) {
+      throw new Error(`Main Agent failed: ${mainResponse.status}`);
+    }
+    
     const plan = await mainResponse.json();
 
     if (plan.action === "DELEGATE_TO_CHECKER") {
-      // STEP 2: Check Agent verification (like main.jsx)
+      // STEP 2: Check Agent (like main.py)
       if (tabId) {
         await sendMessageSafely(tabId, {
           action: 'status_update',
-          status: 'thinking',
+          status: 'checking',
           message: '🔍 Check Agent verifying...'
         });
       }
 
-      console.log("🚀 Calling Check Agent...");
       const checkResponse = await fetch(`${API_BASE}/check-agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: plan.checker_query })
+        body: JSON.stringify({ query: plan.checker_query || text })
       });
 
-      if (!checkResponse.ok) throw new Error('Check Agent failed');
+      if (!checkResponse.ok) {
+        throw new Error(`Check Agent failed: ${checkResponse.status}`);
+      }
+      
       const checkResult = await checkResponse.json();
 
-      // STEP 3: Synthesis Agent (like main.jsx)
+      // STEP 3: Synthesis (like main.py)
       if (tabId) {
         await sendMessageSafely(tabId, {
           action: 'status_update',
@@ -149,19 +143,22 @@ async function runVerificationFlow(text, tabId) {
         })
       });
 
-      if (!synthesisResponse.ok) throw new Error('Synthesis failed');
+      if (!synthesisResponse.ok) {
+        throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
+      }
+      
       const synthesisResult = await synthesisResponse.json();
 
-      // 4. COMBINE & RETURN (like main.jsx)
+      // Build final result
       const finalPacket = {
         claim: text,
-        verdict: checkResult.verdict,
-        confidence: checkResult.confidence,
-        sources: checkResult.sources,
-        analysis: synthesisResult.text
+        verdict: checkResult.verdict || 'UNCERTAIN',
+        confidence: checkResult.confidence || 0.5,
+        sources: checkResult.sources || [],
+        analysis: synthesisResult.text || 'Analysis completed.'
       };
 
-      // 5. Send to UI
+      // Send to UI
       if (tabId) {
         await sendMessageSafely(tabId, {
           action: 'validation_complete',
@@ -171,8 +168,8 @@ async function runVerificationFlow(text, tabId) {
 
       return { success: true, data: finalPacket };
 
-    } else {
-      // Handle other plan actions (like DIRECT_REPLY)
+    } else if (plan.action === "DIRECT_REPLY") {
+      // Direct reply from main agent
       const responseText = plan.reply_text || "I can help you verify information.";
 
       if (tabId) {
@@ -189,12 +186,17 @@ async function runVerificationFlow(text, tabId) {
       }
 
       return { success: true, data: { analysis: responseText } };
+    } else {
+      throw new Error('Unknown action from Main Agent');
     }
 
   } catch (error) {
-    console.error("Agent Error:", error);
+    console.error("Verification Error:", error);
     if (tabId) {
-      await sendMessageSafely(tabId, { action: 'agent_error', error: error.message });
+      await sendMessageSafely(tabId, { 
+        action: 'agent_error', 
+        error: error.message || 'Verification failed' 
+      });
     }
     return { success: false, error: error.message };
   }
@@ -203,12 +205,12 @@ async function runVerificationFlow(text, tabId) {
 // --- PAGE SCAN MODE ---
 async function runPageScan(pageText, tabId) {
   try {
-    // Simple heuristic: Take first 5 "claim-like" sentences
+    // Extract first 5 claim-like sentences
     const sentences = pageText.match(/[^.!?]+[.!?]+/g) || [];
     const claims = sentences
-      .filter(s => s.length > 30 && s.length < 300) // Filter short/long noise
-      .filter(s => !s.includes('©') && !s.includes('Privacy')) // Filter footer text
-      .slice(0, 5); // Take top 5
+      .filter(s => s.length > 30 && s.length < 300)
+      .filter(s => !s.includes('©') && !s.includes('Privacy'))
+      .slice(0, 5);
 
     if (claims.length === 0) {
       if (tabId) {
@@ -220,7 +222,6 @@ async function runPageScan(pageText, tabId) {
       return { success: false, error: 'No claims found' };
     }
 
-    // Notify UI
     if (tabId) {
       await sendMessageSafely(tabId, { 
         action: 'status_update', 
@@ -229,7 +230,7 @@ async function runPageScan(pageText, tabId) {
       });
     }
 
-    // Run Check Agent in Parallel (Like your Swarm)
+    // Check each claim
     const results = await Promise.all(claims.map(async (claim, index) => {
       try {
         const res = await fetch(`${API_BASE}/check-agent`, {
@@ -243,9 +244,9 @@ async function runPageScan(pageText, tabId) {
         
         return {
           claim: claim.trim(),
-          verdict: result.verdict,
-          confidence: result.confidence,
-          explanation: result.explanation,
+          verdict: result.verdict || 'UNCERTAIN',
+          confidence: result.confidence || 0.5,
+          explanation: result.explanation || 'No explanation available',
           sources: result.sources || []
         };
       } catch (err) {
@@ -260,7 +261,7 @@ async function runPageScan(pageText, tabId) {
       }
     }));
 
-    // Send aggregated results
+    // Send results
     if (tabId) {
       await sendMessageSafely(tabId, { 
         action: 'scan_complete', 
@@ -273,45 +274,43 @@ async function runPageScan(pageText, tabId) {
   } catch (error) {
     console.error("Page scan error:", error);
     if (tabId) {
-      await sendMessageSafely(tabId, { action: 'agent_error', error: error.message });
+      await sendMessageSafely(tabId, { 
+        action: 'agent_error', 
+        error: error.message 
+      });
     }
     return { success: false, error: error.message };
   }
 }
 
-// --- IMAGE CAPTURE FLOW (MATCHING MAIN.JSX) ---
+// --- IMAGE CAPTURE FLOW (MATCHING MAIN.PY) ---
 async function handleScreenshotCapture(area, tabId) {
-  console.log('handleScreenshotCapture called with area:', area, 'tabId:', tabId);
-
   try {
-    // Notify UI: Starting capture
+    // Notify UI
     if (tabId) {
       await sendMessageSafely(tabId, {
         action: 'status_update',
         status: 'capturing',
-        message: '📸 Processing screenshot...'
+        message: '📸 Capturing screenshot...'
       });
     }
 
-    console.log('Taking screenshot of visible tab...');
-    // Capture the full tab
+    // Capture screenshot
     const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-    console.log('Screenshot captured, data URL length:', dataUrl.length);
-
-    // Crop the image to the selected area
+    
+    // Crop to selected area
     const croppedBase64 = await cropImage(dataUrl, area);
 
     if (!croppedBase64) {
       throw new Error('Failed to crop screenshot');
     }
 
-    // STEP 1: Process image first (like main.jsx)
-    console.log("🖼️ Calling Image Agent...");
+    // STEP 1: Process Image (like main.py)
     if (tabId) {
       await sendMessageSafely(tabId, {
         action: 'status_update',
         status: 'analyzing',
-        message: '🖼️ Image Agent processing...'
+        message: '🖼️ Image Agent extracting content...'
       });
     }
 
@@ -320,23 +319,25 @@ async function handleScreenshotCapture(area, tabId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         base64Image: croppedBase64,
-        userMessage: "Verify content in captured image"
+        userMessage: "Extract and verify all claims from this image"
       })
     });
 
-    if (!imageResponse.ok) throw new Error('Image processing failed');
+    if (!imageResponse.ok) {
+      throw new Error(`Image processing failed: ${imageResponse.status}`);
+    }
+    
     const imageResult = await imageResponse.json();
 
-    if (!imageResult.extracted_content || imageResult.extracted_content.includes('Failed to process')) {
+    if (!imageResult.combined_query || imageResult.combined_query.includes('Failed')) {
       throw new Error('No readable content found in image');
     }
 
-    // STEP 2: Send extracted content to Check Agent (like main.jsx)
-    console.log("🔍 Calling Check Agent for image content...");
+    // STEP 2: Check Agent (like main.py)
     if (tabId) {
       await sendMessageSafely(tabId, {
         action: 'status_update',
-        status: 'fact_checking',
+        status: 'checking',
         message: '🔍 Check Agent verifying image content...'
       });
     }
@@ -347,11 +348,13 @@ async function handleScreenshotCapture(area, tabId) {
       body: JSON.stringify({ query: imageResult.combined_query })
     });
 
-    if (!checkResponse.ok) throw new Error('Fact-checking failed');
+    if (!checkResponse.ok) {
+      throw new Error(`Check Agent failed: ${checkResponse.status}`);
+    }
+    
     const checkResult = await checkResponse.json();
 
-    // STEP 3: Synthesis (like main.jsx)
-    console.log("✨ Calling Synthesis Agent...");
+    // STEP 3: Synthesis (like main.py)
     if (tabId) {
       await sendMessageSafely(tabId, {
         action: 'status_update',
@@ -364,25 +367,28 @@ async function handleScreenshotCapture(area, tabId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userQuery: "Image analysis: Verify content in uploaded image",
+        userQuery: "Image fact-check: " + (imageResult.user_message || "Verify image content"),
         checkResult: checkResult
       })
     });
 
-    if (!synthesisResponse.ok) throw new Error('Synthesis failed');
+    if (!synthesisResponse.ok) {
+      throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
+    }
+    
     const synthesisResult = await synthesisResponse.json();
 
-    // 4. COMBINE & RETURN (like main.jsx)
+    // Build final result
     const finalPacket = {
-      claim: imageResult.extracted_content,
-      verdict: checkResult.verdict,
-      confidence: checkResult.confidence,
-      sources: checkResult.sources,
-      analysis: synthesisResult.text,
+      claim: imageResult.extracted_content || 'Image content',
+      verdict: checkResult.verdict || 'UNCERTAIN',
+      confidence: checkResult.confidence || 0.5,
+      sources: checkResult.sources || [],
+      analysis: synthesisResult.text || 'Analysis completed.',
       extracted_content: imageResult.extracted_content
     };
 
-    // 5. Send to UI
+    // Send to UI
     if (tabId) {
       await sendMessageSafely(tabId, {
         action: 'image_validation_complete',
@@ -395,7 +401,10 @@ async function handleScreenshotCapture(area, tabId) {
   } catch (error) {
     console.error("Image capture error:", error);
     if (tabId) {
-      await sendMessageSafely(tabId, { action: 'agent_error', error: error.message });
+      await sendMessageSafely(tabId, { 
+        action: 'agent_error', 
+        error: error.message 
+      });
     }
     return { success: false, error: error.message };
   }
@@ -403,39 +412,34 @@ async function handleScreenshotCapture(area, tabId) {
 
 // Helper function to crop image
 async function cropImage(dataUrl, area) {
-  console.log('cropImage called with area:', area);
   try {
-    console.log('Converting dataURL to blob...');
-
-    // Convert data URL to Blob in a worker-safe way
+    // Convert data URL to Blob
     const resp = await fetch(dataUrl);
     const srcBlob = await resp.blob();
 
-    // Create an ImageBitmap from the blob (available in workers)
+    // Create ImageBitmap
     const bitmap = await createImageBitmap(srcBlob);
 
-    console.log('Creating OffscreenCanvas and drawing bitmap...');
+    // Create canvas and crop
     const canvas = new OffscreenCanvas(area.width, area.height);
     const ctx = canvas.getContext('2d');
 
-    // Draw the selected region from the full bitmap
+    // Draw cropped region
     ctx.drawImage(bitmap, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
 
     // Convert to Blob
     const croppedBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
 
-    // Convert blob -> base64 (arrayBuffer -> binary -> btoa) safely in chunks
+    // Convert to base64
     const arrayBuffer = await croppedBlob.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
     let binary = '';
-    const chunk = 0x8000; // 32KB chunk size
+    const chunk = 0x8000;
     for (let i = 0; i < bytes.length; i += chunk) {
       binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
     }
-    const base64 = btoa(binary);
-
-    console.log('Image cropped successfully, base64 length:', base64.length);
-    return base64;
+    
+    return btoa(binary);
 
   } catch (error) {
     console.error('Image cropping error:', error);
