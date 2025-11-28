@@ -44,15 +44,26 @@ async function ensureContentScriptInjected(tabId) {
 
 // Helper function to send messages safely
 async function sendMessageSafely(tabId, message) {
+  if (!tabId) {
+    console.warn('No tabId provided to sendMessageSafely');
+    return;
+  }
+
   try {
     await chrome.tabs.sendMessage(tabId, message);
   } catch (error) {
-    try {
-      // Try to inject content script and retry
-      await ensureContentScriptInjected(tabId);
-      await chrome.tabs.sendMessage(tabId, message);
-    } catch (retryError) {
-      console.error('Failed to send message after retry:', retryError);
+    // Only retry if it's an error about the receiver not existing
+    if (error.message && error.message.includes('receiving end does not exist')) {
+      try {
+        // Try to inject content script and retry
+        await ensureContentScriptInjected(tabId);
+        await chrome.tabs.sendMessage(tabId, message);
+      } catch (retryError) {
+        console.error('Failed to send message after retry:', retryError.message);
+      }
+    } else {
+      // For other errors (like closed message channel), just log and continue
+      console.warn('Message send warning:', error.message);
     }
   }
 }
@@ -72,7 +83,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'capture_screenshot') {
-    handleScreenshotCapture(request.area, sender.tab?.id)
+    const tabId = sender.tab?.id || request.tabId;
+    if (!tabId) {
+      sendResponse({ success: false, error: 'No tab ID available' });
+      return false;
+    }
+    
+    handleScreenshotCapture(request.area, tabId)
       .then(res => sendResponse(res))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true; // Keep message channel open for async response
@@ -286,6 +303,15 @@ async function runPageScan(pageText, tabId) {
 // --- IMAGE CAPTURE FLOW (MATCHING MAIN.PY) ---
 async function handleScreenshotCapture(area, tabId) {
   try {
+    // Validate inputs
+    if (!tabId) {
+      throw new Error('Tab ID is required for screenshot capture');
+    }
+    
+    if (!area || !area.width || !area.height) {
+      throw new Error('Invalid capture area');
+    }
+
     // Notify UI
     if (tabId) {
       await sendMessageSafely(tabId, {

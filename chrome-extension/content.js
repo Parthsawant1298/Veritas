@@ -380,11 +380,26 @@ function capturSelectedArea() {
     action: 'capture_screenshot',
     area: captureData
   }, function(response) {
-    console.log('Response from background script:', response);
     if (chrome.runtime.lastError) {
       console.error('Runtime error during capture:', chrome.runtime.lastError);
       showError('Screenshot capture failed: ' + chrome.runtime.lastError.message);
+      return;
     }
+    
+    // Check if response is valid
+    if (!response) {
+      console.error('No response received from background script');
+      showError('Failed to process screenshot - no response from extension');
+      return;
+    }
+    
+    console.log('Response from background script:', response);
+    
+    // Handle response based on success
+    if (response.success === false) {
+      showError(response.error || 'Failed to process screenshot');
+    }
+    // Success case is handled by 'image_validation_complete' message listener
   });
 
   cancelCapture();
