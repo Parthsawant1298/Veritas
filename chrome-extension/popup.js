@@ -2,8 +2,9 @@
 
 document.addEventListener('DOMContentLoaded', function() {
   const scanBtn = document.getElementById('scanBtn');
+  const captureBtn = document.getElementById('captureBtn');
   const statusDiv = document.getElementById('statusDiv');
-  
+
   // Check backend connection status
   checkBackendConnection();
   
@@ -70,7 +71,75 @@ document.addEventListener('DOMContentLoaded', function() {
       scanBtn.innerHTML = '<span>🔍</span> Scan This Page';
     }
   });
-  
+
+  // Capture button click handler
+  captureBtn.addEventListener('click', async function() {
+    try {
+      captureBtn.disabled = true;
+      captureBtn.innerHTML = '<span>📸</span> Starting Capture...';
+
+      // Get current active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      if (!tab) {
+        throw new Error('No active tab found');
+      }
+
+      // Send message directly to content script
+      console.log('Sending start_capture message to tab:', tab.id);
+
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'start_capture'
+      }, function(response) {
+        console.log('Response from content script:', response);
+
+        if (chrome.runtime.lastError) {
+          console.error('Runtime error:', chrome.runtime.lastError);
+          console.log('Attempting to inject content script...');
+
+          // Try to inject content script manually
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js']
+          }, () => {
+            if (chrome.runtime.lastError) {
+              updateStatus('❌ Cannot inject script on this page', '#ef4444');
+              return;
+            }
+
+            // Try again after injection
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tab.id, { action: 'start_capture' }, (resp) => {
+                if (resp && resp.success) {
+                  updateStatus('📸 Drag to select area to capture', '#3b82f6');
+                  setTimeout(() => window.close(), 500);
+                } else {
+                  updateStatus('❌ Capture not supported on this page', '#ef4444');
+                }
+              });
+            }, 100);
+          });
+        } else if (response && response.success) {
+          updateStatus('📸 Drag to select area to capture', '#3b82f6');
+          // Close popup to allow user to see the page
+          setTimeout(() => window.close(), 500);
+        } else {
+          updateStatus('❌ Failed to start capture mode', '#ef4444');
+        }
+
+        // Reset button
+        captureBtn.disabled = false;
+        captureBtn.innerHTML = '<span>📸</span> Capture Screenshot';
+      });
+
+    } catch (error) {
+      console.error('Capture error:', error);
+      updateStatus('❌ ' + error.message, '#ef4444');
+      captureBtn.disabled = false;
+      captureBtn.innerHTML = '<span>📸</span> Capture Screenshot';
+    }
+  });
+
   async function checkBackendConnection() {
     try {
       const response = await fetch('http://localhost:8000/', {
