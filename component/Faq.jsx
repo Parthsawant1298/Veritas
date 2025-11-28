@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { HelpCircle, Plus, Minus } from 'lucide-react';
+import ColorBends from './ColorBends';
 
 const faqData = [
   {
@@ -106,26 +107,58 @@ export default function FAQ() {
   ];
 
   return (
-    <section className="bg-[#050505] py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 xl:px-12 font-sans">
-      <div className="max-w-7xl mx-auto">
-        {/* --- Title & Subtitle at Top --- */}
-        <div className="text-center mb-12 sm:mb-16">
-          <div className="mb-6 sm:mb-8">
-            <div className="inline-flex items-center gap-2 sm:gap-4 pl-1.5 pr-4 sm:pr-6 py-1.5 sm:py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
-              <span className="bg-[#6d28d9] text-white text-xs sm:text-sm font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)] flex items-center justify-center">
-                <HelpCircle size={14} className="sm:hidden" />
-                <HelpCircle size={16} className="hidden sm:block" />
-              </span>
-              <span className="text-lg sm:text-xl text-gray-300 font-medium">FAQ</span>
-            </div>
+    <div className="min-h-screen bg-[#050505] text-white font-sans overflow-hidden selection:bg-[#7C3AED]/30">
+      
+      {/* Global CSS for Dot Pattern */}
+      <style jsx global>{`
+        .bg-dot-pattern {
+          background-image: radial-gradient(#ffffff 1px, transparent 1px);
+          background-size: 20px 20px;
+        }
+      `}</style>
+
+      {/* --- HERO SECTION --- */}
+      <section className="relative h-[500px] lg:h-[600px] overflow-hidden flex items-center justify-center">
+        {/* ColorBends Animated Background */}
+        <div className="absolute inset-0 z-0">
+          <ColorBends
+            colors={["#ff0066", "#9900ff", "#00ffee", "#ff3399"]}
+            rotation={30}
+            speed={0.15}
+            scale={0.9}
+            frequency={1.0}
+            warpStrength={0.6}
+            mouseInfluence={0.3}
+            parallax={0.3}
+            noise={0.005}
+            transparent={false}
+            className="w-full h-full"
+          />
+          <div className="absolute inset-0 bg-[#050505]/20"></div>
+        </div>
+
+        <div className="relative z-20 text-center px-4 max-w-4xl mx-auto mt-20">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-6 animate-fade-in-up">
+             <span className="bg-[#6d28d9] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)]">
+               FAQ
+             </span>
+             <span className="text-sm text-gray-300 font-medium">Frequently Asked Questions</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-[56px] font-semibold leading-[1.2] tracking-tight mb-4 sm:mb-6 text-white px-2 sm:px-0">
-            Frequently Asked <span className="text-white/30">Questions</span>
-          </h2>
-          <p className="text-gray-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
-            Have questions? Our FAQ section has you covered with quick answers to the most common inquiries.
+          
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
+            Got <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-purple-500 to-indigo-500">Questions?</span>
+          </h1>
+
+          <p className="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
+            Find answers to the most common questions about our AI-powered fact-checking system and how to get the most out of Veritas.
           </p>
         </div>
+      </section>
+
+    <section className="bg-[#050505] py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 xl:px-12 font-sans">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* --- FAQ Content --- */}
         {/* --- Two Column FAQ Grid --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
           <div className="flex flex-col gap-3 sm:gap-4">
@@ -151,5 +184,7 @@ export default function FAQ() {
         </div>
       </div>
     </section>
+
+    </div>
   );
 }

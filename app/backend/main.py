@@ -318,17 +318,19 @@ Example format:
             }
         )
         
-        if response.text:
-            return response.text
-            
+        if response and response.text and response.text.strip():
+            return response.text.strip()
+
         # If response.text is empty, raise exception to trigger fallback
-        raise ValueError("Empty response from synthesis model")
+        raise ValueError(f"Empty response from synthesis model. Response object: {bool(response)}, Response text: '{getattr(response, 'text', 'No text attribute')}'")
 
     except Exception as e:
         print(f"Synthesis Error: {e}")
         # Fallback response
         verdict_emoji = "✅" if check_result["verdict"] == "REAL" else "❌" if check_result["verdict"] == "FAKE" else "⚠️"
-        return f"{verdict_emoji} **This claim is {check_result['verdict']}.**\n\n{check_result.get('explanation', 'Based on available information.')}\n\n**Confidence Level:** {int(check_result.get('confidence', 0.5) * 100)}%"
+        fallback_text = f"{verdict_emoji} **This claim is {check_result['verdict']}.**\n\n{check_result.get('explanation', 'Based on available information.')}\n\n**Confidence Level:** {int(check_result.get('confidence', 0.5) * 100)}%"
+        print(f"Synthesis: Using fallback response: {fallback_text[:100]}...")
+        return fallback_text
 
 # ==================== FASTAPI ROUTES ====================
 

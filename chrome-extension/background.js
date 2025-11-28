@@ -85,13 +85,24 @@ async function runVerificationFlow(text, tabId) {
     const synthesisResponse = await fetch(`${API_BASE}/synthesis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         userQuery: text,
-        checkResult: checkResult 
+        checkResult: checkResult
       })
     });
 
+    if (!synthesisResponse.ok) {
+      throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
+    }
+
     const synthesisResult = await synthesisResponse.json();
+
+    // Handle case where synthesis returns empty or null text
+    if (!synthesisResult.text || synthesisResult.text.trim() === '') {
+      console.warn('Empty synthesis response, using fallback');
+      const verdict_emoji = checkResult.verdict === "REAL" ? "✅" : checkResult.verdict === "FAKE" ? "❌" : "⚠️";
+      synthesisResult.text = `${verdict_emoji} **This claim is ${checkResult.verdict}.**\n\n${checkResult.explanation || 'Based on available information.'}\n\n**Confidence Level:** ${Math.round((checkResult.confidence || 0.5) * 100)}%`;
+    }
 
     // 4. COMBINE & RETURN
     const finalPacket = {
@@ -227,7 +238,7 @@ async function handleScreenshotCapture(area, tabId) {
     }
 
     // 1. CALL IMAGE AGENT (Extract content from image)
-    console.log("🖼️ Calling Image Agent...");
+    console.log("🖼 Calling Image Agent...");
     if (tabId) {
       chrome.tabs.sendMessage(tabId, {
         action: 'status_update',
@@ -290,7 +301,18 @@ async function handleScreenshotCapture(area, tabId) {
       })
     });
 
+    if (!synthesisResponse.ok) {
+      throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
+    }
+
     const synthesisResult = await synthesisResponse.json();
+
+    // Handle case where synthesis returns empty or null text
+    if (!synthesisResult.text || synthesisResult.text.trim() === '') {
+      console.warn('Empty synthesis response for image, using fallback');
+      const verdict_emoji = checkResult.verdict === "REAL" ? "✅" : checkResult.verdict === "FAKE" ? "❌" : "⚠️";
+      synthesisResult.text = `${verdict_emoji} **This claim is ${checkResult.verdict}.**\n\n${checkResult.explanation || 'Based on available information.'}\n\n**Confidence Level:** ${Math.round((checkResult.confidence || 0.5) * 100)}%`;
+    }
 
     // 4. COMBINE & RETURN (Same format as text verification)
     const finalPacket = {
@@ -324,41 +346,41 @@ async function handleScreenshotCapture(area, tabId) {
 // Helper function to crop image
 async function cropImage(dataUrl, area) {
   console.log('cropImage called with area:', area);
+  try {
+    console.log('Converting dataURL to blob...');
 
-  return new Promise((resolve) => {
-    try {
-      console.log('Creating OffscreenCanvas...');
-      const canvas = new OffscreenCanvas(area.width, area.height);
-      const ctx = canvas.getContext('2d');
+    // Convert data URL to Blob in a worker-safe way
+    const resp = await fetch(dataUrl);
+    const srcBlob = await resp.blob();
 
-      const img = new Image();
-      img.onload = () => {
-        console.log('Image loaded, cropping...');
-        ctx.drawImage(img, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
+    // Create an ImageBitmap from the blob (available in workers)
+    const bitmap = await createImageBitmap(srcBlob);
 
-        canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }).then(blob => {
-          console.log('Canvas converted to blob, size:', blob.size);
-          const reader = new FileReader();
-          reader.onload = () => {
-            const base64 = reader.result.split(',')[1]; // Remove data:image/jpeg;base64, prefix
-            console.log('Image cropped successfully, base64 length:', base64.length);
-            resolve(base64);
-          };
-          reader.readAsDataURL(blob);
-        }).catch(blobError => {
-          console.error('Blob conversion error:', blobError);
-          resolve(null);
-        });
-      };
-      img.onerror = (imgError) => {
-        console.error('Image load error:', imgError);
-        resolve(null);
-      };
-      img.src = dataUrl;
+    console.log('Creating OffscreenCanvas and drawing bitmap...');
+    const canvas = new OffscreenCanvas(area.width, area.height);
+    const ctx = canvas.getContext('2d');
 
-    } catch (error) {
-      console.error('Image cropping error:', error);
-      resolve(null);
+    // Draw the selected region from the full bitmap
+    ctx.drawImage(bitmap, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
+
+    // Convert to Blob
+    const croppedBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+
+    // Convert blob -> base64 (arrayBuffer -> binary -> btoa) safely in chunks
+    const arrayBuffer = await croppedBlob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunk = 0x8000; // 32KB chunk size
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
     }
-  });
+    const base64 = btoa(binary);
+
+    console.log('Image cropped successfully, base64 length:', base64.length);
+    return base64;
+
+  } catch (error) {
+    console.error('Image cropping error:', error);
+    return null;
+  }
 }

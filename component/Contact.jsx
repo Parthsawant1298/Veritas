@@ -1,10 +1,59 @@
 "use client";
 import React from 'react';
 import { Mail, MapPin, Phone, Send, MessageSquare } from 'lucide-react';
+import ColorBends from './ColorBends';
 
 export default function Contact() {
   return (
-    <section className="bg-[#050505] pt-28 pb-10 px-6 md:px-12 font-sans text-white relative overflow-hidden">
+    <div className="min-h-screen bg-[#050505] text-white font-sans overflow-hidden selection:bg-[#7C3AED]/30">
+      
+      {/* Global CSS for Dot Pattern */}
+      <style jsx global>{`
+        .bg-dot-pattern {
+          background-image: radial-gradient(#ffffff 1px, transparent 1px);
+          background-size: 20px 20px;
+        }
+      `}</style>
+
+      {/* --- HERO SECTION --- */}
+      <section className="relative h-[500px] lg:h-[600px] overflow-hidden flex items-center justify-center">
+        {/* ColorBends Animated Background */}
+        <div className="absolute inset-0 z-0">
+          <ColorBends
+            colors={["#ff0066", "#9900ff", "#00ffee", "#ff3399"]}
+            rotation={30}
+            speed={0.15}
+            scale={0.9}
+            frequency={1.0}
+            warpStrength={0.6}
+            mouseInfluence={0.3}
+            parallax={0.3}
+            noise={0.005}
+            transparent={false}
+            className="w-full h-full"
+          />
+          <div className="absolute inset-0 bg-[#050505]/20"></div>
+        </div>
+
+        <div className="relative z-20 text-center px-4 max-w-4xl mx-auto mt-20">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-6 animate-fade-in-up">
+             <span className="bg-[#6d28d9] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)]">
+               Contact Us
+             </span>
+             <span className="text-sm text-gray-300 font-medium">Get in Touch</span>
+          </div>
+          
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
+            Let's <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-purple-500 to-indigo-500">Connect</span>
+          </h1>
+
+          <p className="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
+            Have questions about our AI-powered fact-checking system? We'd love to hear from you and help you get started with Veritas.
+          </p>
+        </div>
+      </section>
+
+    <section className="bg-[#050505] py-10 px-6 md:px-12 font-sans text-white relative overflow-hidden">
       
       {/* Background Glows */}
       <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-[#7C3AED]/10 blur-[120px] rounded-full pointer-events-none" />
@@ -20,22 +69,6 @@ export default function Contact() {
 
       <div className="max-w-7xl mx-auto">
         
-        {/* --- HEADER --- */}
-        <div className="text-center mb-12">
-          <div className="mb-8">
-            <div className="inline-flex items-center gap-4 pl-1.5 pr-6 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm shadow-sm">
-              <span className="bg-[#6d28d9] text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-[0_0_10px_rgba(109,40,217,0.4)] flex items-center justify-center">
-                <MessageSquare size={16} />
-              </span>
-              <span className="text-xl text-gray-300 font-medium">Contact</span>
-            </div>
-          </div>
-
-          <h2 className="max-w-4xl mx-auto text-4xl md:text-5xl lg:text-[56px] font-semibold leading-[1.2] tracking-tight mb-6 text-white px-4">
-            Get in Touch <span className="text-white/30">We'd love to hear from you.</span>
-          </h2>
-        </div>
-
         {/* --- CONTENT GRID --- */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-stretch">
           
@@ -142,5 +175,7 @@ export default function Contact() {
         </div>
       </div>
     </section>
+
+    </div>
   );
 }
