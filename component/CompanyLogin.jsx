@@ -1,10 +1,10 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Zap, ArrowRight, Github, Chrome, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Zap, ArrowRight, Github, Chrome, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-export default function Login() {
+export default function CompanyLogin() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -22,7 +22,7 @@ export default function Login() {
     if (message) {
       setSuccessMessage(message);
       // Clear the URL parameter
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', '/company-login');
     }
   }, []);
 
@@ -41,7 +41,7 @@ export default function Login() {
     setSuccessMessage('');
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/company-auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -56,18 +56,19 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // Redirect to main page after successful login
-        router.push('/main');
+        // Redirect to company main page after successful login
+        router.push('/company-main');
       } else {
         setError(data.error || 'Login failed');
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Company login error:', error);
       setError('An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+  
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans flex relative overflow-hidden">
       
@@ -80,7 +81,6 @@ export default function Login() {
       `}</style>
 
       {/* --- LEFT SIDE: FORM --- */}
-      {/* Reduced padding and used min-h-[100dvh] for better mobile browser support */}
       <div className="w-full lg:w-1/2 flex flex-col min-h-[100dvh] lg:h-screen px-6 sm:px-8 lg:px-16 relative z-10 py-4 lg:py-6">
         
         {/* Mobile Background Elements */}
@@ -89,22 +89,20 @@ export default function Login() {
         </div>
 
         {/* 1. Header/Logo */}
-        {/* Adjusted positioning to be more compact */}
         <div className="flex-none lg:absolute lg:top-8 lg:left-16">
             <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-[#7C3AED] flex items-center justify-center shadow-[0_0_15px_#7C3AED]">
-                    <Zap size={16} fill="white" className="text-white" />
+                    <Building2 size={16} className="text-white" />
                 </div>
-                <span className="text-lg font-bold tracking-tight">Veritas</span>
+                <span className="text-lg font-bold tracking-tight">Veritas Business</span>
             </div>
         </div>
 
         {/* 2. Form Container */}
-        {/* Reduced max-width and vertical spacing for a tighter layout */}
         <div className="flex-1 flex flex-col justify-center py-6">
             <div className="max-w-[360px] w-full mx-auto">
-                <h1 className="text-2xl md:text-3xl font-bold mb-2">Welcome back</h1>
-                <p className="text-gray-400 mb-6 text-sm">Enter your details to access your workspace.</p>
+                <h1 className="text-2xl md:text-3xl font-bold mb-2">Company Login</h1>
+                <p className="text-gray-400 mb-6 text-sm">Access your company dashboard and analytics.</p>
 
                 {/* Social Login */}
                 <div className="grid grid-cols-2 gap-3 mb-6">
@@ -144,7 +142,7 @@ export default function Login() {
                 {/* Form Fields */}
                 <form className="space-y-4" onSubmit={handleSubmit}>
                     <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-300 ml-1">Email</label>
+                        <label className="text-xs font-medium text-gray-300 ml-1">Company Email</label>
                         <div className="relative">
                             <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
                                 <Mail size={16} />
@@ -152,7 +150,7 @@ export default function Login() {
                             <input
                             type="email"
                             name="email"
-                            placeholder="name@company.com"
+                            placeholder="company@business.com"
                             value={formData.email}
                             onChange={handleChange}
                             required
@@ -198,22 +196,22 @@ export default function Login() {
                       disabled={isLoading}
                       className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-all shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:shadow-[0_0_30px_rgba(124,58,237,0.5)] hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm"
                     >
-                        {isLoading ? 'Signing In...' : 'Sign In'}
+                        {isLoading ? 'Signing In...' : 'Sign In to Dashboard'}
                         <ArrowRight size={16} />
                     </button>
                 </form>
 
-                {/* Company Login Option */}
-                <div className="mt-4 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                  <p className="text-center text-xs text-purple-300">
-                    Are you a company?{' '}
-                    <Link href="/company-login" className="text-white font-medium hover:text-purple-200 transition-colors">Sign in as Company</Link>
+                {/* Switch to User Login */}
+                <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                  <p className="text-center text-xs text-blue-300">
+                    Not a company?{' '}
+                    <Link href="/login" className="text-white font-medium hover:text-blue-200 transition-colors">Sign in as User</Link>
                   </p>
                 </div>
 
                 <p className="mt-6 text-center text-xs text-gray-500">
-                    Don't have an account?{' '}
-                    <Link href="/register" className="text-white font-medium hover:text-[#7C3AED] transition-colors">Sign up for free</Link>
+                    Don't have a company account?{' '}
+                    <Link href="/company-register" className="text-white font-medium hover:text-[#7C3AED] transition-colors">Register your company</Link>
                 </p>
             </div>
         </div>
@@ -238,23 +236,23 @@ export default function Login() {
             <div className="relative bg-[#111]/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
                <div className="flex items-center gap-4 mb-6">
                   <div className="w-12 h-12 rounded-full bg-[#7C3AED] flex items-center justify-center text-white shadow-lg">
-                     <Zap size={24} fill="white" />
+                     <Building2 size={24} />
                   </div>
                   <div>
-                     <h3 className="text-lg font-bold text-white">Veritas Intelligence</h3>
-                     <p className="text-sm text-[#7C3AED]">Real-time Verification</p>
+                     <h3 className="text-lg font-bold text-white">Enterprise Dashboard</h3>
+                     <p className="text-sm text-[#7C3AED]">Real-time Business Analytics</p>
                   </div>
                </div>
                
                <div className="space-y-4">
                   {[
-                     { label: "Data Integrity Check", status: "Verified", time: "Just now" },
-                     { label: "Source Authentication", status: "Verified", time: "2m ago" },
-                     { label: "Cross-Reference Scan", status: "Processing...", time: "1m ago" }
+                     { label: "Team Performance", status: "98% Uptime", time: "Live" },
+                     { label: "Security Compliance", status: "Verified", time: "Updated" },
+                     { label: "API Monitoring", status: "Active", time: "Real-time" }
                   ].map((item, i) => (
                      <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
                         <div className="flex items-center gap-3">
-                           <div className={`w-2 h-2 rounded-full ${i === 2 ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`} />
+                           <div className={`w-2 h-2 rounded-full bg-green-500`} />
                            <span className="text-sm text-gray-300">{item.label}</span>
                         </div>
                         <span className="text-xs text-gray-500 font-mono">{item.time}</span>
@@ -264,11 +262,11 @@ export default function Login() {
 
                <div className="mt-8 pt-6 border-t border-white/10">
                   <p className="text-gray-400 text-sm italic">
-                     "The most reliable tool we've used for verifying complex data streams in real-time."
+                     "Trusted by leading enterprises for mission-critical verification and compliance."
                   </p>
                   <div className="mt-4 flex items-center gap-2">
                      <div className="w-6 h-6 rounded-full bg-gray-600" />
-                     <span className="text-xs text-gray-500">Product Team, TechFlow</span>
+                     <span className="text-xs text-gray-500">Enterprise Solutions Team</span>
                   </div>
                </div>
             </div>

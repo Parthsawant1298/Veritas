@@ -1,14 +1,14 @@
-// models/user.js
+// models/company.js
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-const userSchema = new mongoose.Schema({
+const companySchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Name is required'],
+    required: [true, 'Company name is required'],
     trim: true,
-    minlength: [2, 'Name must be at least 2 characters long'],
-    maxlength: [50, 'Name cannot exceed 50 characters']
+    minlength: [2, 'Company name must be at least 2 characters long'],
+    maxlength: [100, 'Company name cannot exceed 100 characters']
   },
   email: {
     type: String,
@@ -46,10 +46,10 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-userSchema.index({ createdAt: -1 });
+companySchema.index({ createdAt: -1 });
 
 // Hash password before saving
-userSchema.pre('save', async function() {
+companySchema.pre('save', async function() {
   // Only hash password if it's modified and not already hashed
   if (!this.isModified('password') || this.password.startsWith('$2a$') || this.password.startsWith('$2b$') || this.password.startsWith('$2y$')) {
     return;
@@ -65,7 +65,7 @@ userSchema.pre('save', async function() {
 });
 
 // Compare password method
-userSchema.methods.comparePassword = async function(candidatePassword) {
+companySchema.methods.comparePassword = async function(candidatePassword) {
   try {
     if (!this.password || !candidatePassword) return false;
     return await bcrypt.compare(candidatePassword, this.password);
@@ -75,6 +75,6 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   }
 };
 
-const User = mongoose.models.User || mongoose.model('User', userSchema);
+const Company = mongoose.models.Company || mongoose.model('Company', companySchema);
 
-export default User;
+export default Company;
