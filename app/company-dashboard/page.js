@@ -49,6 +49,104 @@ const PieChartComponent = ({ data, title }) => {
   );
 };
 
+// Line Chart Component for timeline data
+const LineChartComponent = ({ data, title }) => {
+  if (!data || data.length === 0) return null;
+
+  const maxY = Math.max(...data.map(d => d.y));
+  const validData = data.filter(d => !isNaN(new Date(d.x).getTime()));
+  const dates = validData.map(d => new Date(d.x).getTime());
+  const minX = Math.min(...dates);
+  const maxX = Math.max(...dates);
+
+  const width = 300;
+  const height = 200;
+
+  let points, circles;
+  if (maxX === minX || validData.length === 0) {
+    // All dates are the same or no valid dates, spread evenly
+    points = validData.map((d, i) => {
+      const x = validData.length > 1 ? (i / (validData.length - 1)) * width : width / 2;
+      const y = height - (d.y / maxY) * height;
+      return `${x},${y}`;
+    }).join(' ');
+    circles = validData.map((d, i) => {
+      const x = validData.length > 1 ? (i / (validData.length - 1)) * width : width / 2;
+      const y = height - (d.y / maxY) * height;
+      return { x, y, i };
+    });
+  } else {
+    points = validData.map(d => {
+      const x = ((new Date(d.x).getTime() - minX) / (maxX - minX)) * width;
+      const y = height - (d.y / maxY) * height;
+      return `${x},${y}`;
+    }).join(' ');
+    circles = validData.map((d, i) => {
+      const x = ((new Date(d.x).getTime() - minX) / (maxX - minX)) * width;
+      const y = height - (d.y / maxY) * height;
+      return { x, y, i };
+    });
+  }
+
+  return (
+    <div className="bg-[#111] border border-white/10 rounded-xl p-6">
+      <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+        <LineChart className="text-blue-500" size={20} />
+        {title}
+      </h2>
+      <svg width={width} height={height} className="w-full h-48">
+        <polyline
+          fill="none"
+          stroke="#3B82F6"
+          strokeWidth="2"
+          points={points}
+        />
+        {circles.map(({ x, y, i }) => (
+          <circle key={i} cx={x} cy={y} r="3" fill="#3B82F6" />
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+// Bar Chart Component for distributions
+const BarChartComponent = ({ data, title }) => {
+  if (!data || data.length === 0) return null;
+
+  const maxValue = Math.max(...data.map(d => d.value));
+
+  return (
+    <div className="bg-[#111] border border-white/10 rounded-xl p-6">
+      <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+        <BarChart3 className="text-green-500" size={20} />
+        {title}
+      </h2>
+      <div className="space-y-4">
+        {data.map((item, index) => {
+          const percentage = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
+          return (
+            <div key={index} className="space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-300">{item.name}</span>
+                <span className="text-white font-semibold">{item.value}</span>
+              </div>
+              <div className="h-4 bg-[#1a1a1a] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${percentage}%`,
+                    backgroundColor: item.color || '#10B981'
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // Enhanced News Card with detailed information
 const NewsCard = ({ news, index }) => {
   const [expanded, setExpanded] = useState(false);
@@ -482,6 +580,27 @@ export default function EnhancedCompanyDashboardPage() {
             />
           </div>
 
+          {/* Additional Analytics Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <LineChartComponent
+              data={timeline.map(t => ({x: t.date, y: t.count || 1}))}
+              title="News Timeline"
+            />
+            <BarChartComponent
+              data={Object.entries(stats.source_breakdown || {}).slice(0, 10).map(([name, value]) => ({name, value}))}
+              title="Top Sources"
+            />
+            <BarChartComponent
+              data={[
+                {name: 'High (80-100%)', value: allNews.filter(n => (n.verification?.confidence || n.confidence || 0) >= 0.8).length},
+                {name: 'Medium (60-79%)', value: allNews.filter(n => (n.verification?.confidence || n.confidence || 0) >= 0.6 && (n.verification?.confidence || n.confidence || 0) < 0.8).length},
+                {name: 'Low (40-59%)', value: allNews.filter(n => (n.verification?.confidence || n.confidence || 0) >= 0.4 && (n.verification?.confidence || n.confidence || 0) < 0.6).length},
+                {name: 'Very Low (<40%)', value: allNews.filter(n => (n.verification?.confidence || n.confidence || 0) < 0.4).length},
+              ]}
+              title="Confidence Distribution"
+            />
+          </div>
+
           {/* Navigation Tabs */}
           <div className="flex gap-1 mb-8 bg-[#111] p-1 rounded-xl">
             {['overview', 'news', 'sources', 'timeline'].map((tab) => (
@@ -619,6 +738,62 @@ export default function EnhancedCompanyDashboardPage() {
                 {allNews.slice(0, 3).map((news, index) => (
                   <NewsCard key={index} news={news} index={index} />
                 ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'sources' && (
+            <div className="grid gap-6">
+              <div className="bg-[#111] border border-white/10 rounded-xl p-6">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <Globe className="text-green-400" size={20} />
+                  News Sources Analysis
+                </h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <BarChartComponent
+                    data={Object.entries(stats.source_breakdown || {}).slice(0, 10).map(([name, value]) => ({name, value}))}
+                    title="Top 10 Sources"
+                  />
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-300">Source Details</h3>
+                    <div className="space-y-3">
+                      {Object.entries(stats.source_breakdown || {}).slice(0, 10).map(([source, count]) => (
+                        <div key={source} className="flex justify-between items-center p-3 bg-[#1a1a1a] rounded-lg">
+                          <span className="text-gray-300 truncate flex-1">{source}</span>
+                          <span className="text-white font-semibold ml-4">{count} articles</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'timeline' && (
+            <div className="grid gap-6">
+              <div className="bg-[#111] border border-white/10 rounded-xl p-6">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <Clock className="text-purple-400" size={20} />
+                  News Timeline
+                </h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <LineChartComponent
+                    data={timeline.map(t => ({x: t.date, y: t.count || 1}))}
+                    title="News Volume Over Time"
+                  />
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-300">Timeline Events</h3>
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {timeline.map((t, index) => (
+                        <div key={index} className="flex justify-between items-center p-3 bg-[#1a1a1a] rounded-lg">
+                          <span className="text-gray-300">{new Date(t.date).toLocaleDateString()}</span>
+                          <span className="text-white font-semibold">{t.count || 1} news items</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
